@@ -4,8 +4,18 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!manifest\\.webmanifest|sw\\.js|assets/|favicon\\.ico).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [{ "key": "Content-Type", "value": "application/javascript" }]
     }
   ]
 }
