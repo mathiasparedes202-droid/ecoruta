@@ -1,0 +1,8 @@
+.env
+.env.*
+.git
+vendor/
+node_modules/
+out.txt
+login_*.json
+composer.phar

@@ -1,0 +1,16 @@
+{
+  "name": "ecoruta/backend",
+  "description": "Sistema interno de gestión de EcoRuta",
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/",
+      "Core\\": "core/",
+      "Config\\": "config/"
+    }
+  },
+  "require": {
+    "firebase/php-jwt": "^7.0",
+    "vlucas/phpdotenv": "^5.6",
+    "phpmailer/phpmailer": "*"
+  }
+}

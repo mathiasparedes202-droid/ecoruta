@@ -1,0 +1,72 @@
+[2026-05-28 19:15:20] SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '?' at line 1
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(323): PDO->prepare('SHOW COLUMNS FR...')
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(167): App\Repositories\PedidoRepository->columnExists('pedido_detalle', 'detalle_receta')
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(77): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-05-28 19:40:05] SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '?' at line 1
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(323): PDO->prepare('SHOW COLUMNS FR...')
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(167): App\Repositories\PedidoRepository->columnExists('pedido_detalle', 'detalle_receta')
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(77): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-07-14 13:36:48] La unidad de medida del insumo no es válida
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(493): App\Repositories\InsumoRepository->validarUnidadMedida(6)
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(250): App\Repositories\PedidoRepository->validarStockRecetaParaProducto(8, 1.0)
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(82): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-07-14 13:37:04] La unidad de medida del insumo no es válida
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(493): App\Repositories\InsumoRepository->validarUnidadMedida(6)
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(250): App\Repositories\PedidoRepository->validarStockRecetaParaProducto(8, 1.0)
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(82): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-07-14 13:37:29] La unidad de medida del insumo no es válida
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(493): App\Repositories\InsumoRepository->validarUnidadMedida(6)
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(250): App\Repositories\PedidoRepository->validarStockRecetaParaProducto(8, 1.0)
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(82): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-07-14 13:41:05] La unidad de medida del insumo no es válida
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(493): App\Repositories\InsumoRepository->validarUnidadMedida(6)
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(250): App\Repositories\PedidoRepository->validarStockRecetaParaProducto(7, 1.0)
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(82): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-07-14 13:42:02] La unidad de medida del insumo no es válida
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(493): App\Repositories\InsumoRepository->validarUnidadMedida(6)
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(250): App\Repositories\PedidoRepository->validarStockRecetaParaProducto(7, 1.0)
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(82): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+
+[2026-07-14 13:47:06] La unidad de medida "Paquete" del insumo "Chocolate Ferrero Ruche" no es válida. Unidades válidas: kg, g, unidad, unidades, u, ml, lt, litro, litros, metro, metros, metro cuadrado, docena, dozen, caja
+#0 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(513): App\Repositories\InsumoRepository->validarUnidadMedida(6)
+#1 C:\xampp\htdocs\floreria_system\backend\app\repositories\PedidoRepository.php(250): App\Repositories\PedidoRepository->validarStockRecetaParaProducto(7, 1.0)
+#2 C:\xampp\htdocs\floreria_system\backend\app\services\PedidoService.php(28): App\Repositories\PedidoRepository->createProductionOrder(Array, 1)
+#3 C:\xampp\htdocs\floreria_system\backend\app\controllers\PedidoController.php(93): App\Services\PedidoService->crearOrdenProduccion(Array, 1)
+#4 C:\xampp\htdocs\floreria_system\backend\core\Router.php(155): App\Controllers\PedidoController->crearOrdenProduccion(Array)
+#5 C:\xampp\htdocs\floreria_system\backend\public\index.php(16): Core\Router->dispatch()
+#6 {main}
+

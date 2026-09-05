@@ -1,0 +1,15 @@
+# Credenciales y secretos: nunca commitear
+.env
+.env.*
+!.env.example
+
+# Restos de diagnosticos / pruebas locales
+out.txt
+login_*.json
+package-lock.json
+composer.phar
+
+# Dependencias y artefactos
+/vendor/
+/public/js y css.zip
+/logs/*.log

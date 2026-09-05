@@ -1,0 +1,13 @@
+RewriteEngine On
+RewriteBase /ecoruta/backend/public/
+
+# Preservar el header Authorization para PHP
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# No reescribir si es un archivo o directorio existente
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Reescribir todas las peticiones a index.php
+RewriteRule ^ index.php [QSA,L]

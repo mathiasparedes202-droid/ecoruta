@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoRuta</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar" id="sidebar">
+            <header class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-leaf"></i>
+                    </div>
+                    <div class="logo-text">
+                        <h1>EcoRuta</h1>
+                        <span><i class="fas fa-map-marker-alt"></i> Concepción, Paraguay</span>
+                    </div>
+                </div>
+            </header>
+            <div class="pick-mode-banner" id="pickModeBanner">
+                <i class="fas fa-crosshairs"></i> Haz clic en el mapa para capturar coordenadas
+            </div>
+
+            <div class="sidebar-content">
+                <div class="stats-bar">
+                    <div class="stat-card">
+                        <i class="fas fa-map-pin"></i>
+                        <div class="value" id="totalLocations">0</div>
+                        <div class="label">Puntos Eco</div>
+                    </div>
+                    <div class="stat-card eco-card">
+                        <i class="fas fa-smog"></i>
+                        <div class="value" id="co2SavedMetric">0 kg</div>
+                        <div class="label">CO2 Ahorrado</div>
+                    </div>
+                </div>
+
+                <!-- Pestañas de Navegación -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="locations">
+                        <i class="fas fa-store"></i>
+                        <span>Lugares</span>
+                    </button>
+                    <button class="tab" data-tab="add">
+                        <i class="fas fa-plus-circle"></i>
+                        <span>Agregar</span>
+                    </button>
+                    <button class="tab" data-tab="route">
+                        <i class="fas fa-route"></i>
+                        <span>Ruta Eco</span>
+                    </button>
+                </div>
+
+                <!-- Lugares y Comercios -->
+                <div class="tab-content active" id="locations-tab">
+                    <ul class="location-list" id="locationList"></ul>
+                    <div class="empty-state" id="emptyState" style="display: none;">
+                        <i class="fas fa-map-marked-alt"></i>
+                        <p>No hay ubicaciones registradas.<br>¡Agrega un nuevo punto!</p>
+                    </div>
+                </div>
+
+                <!--gregar Nuevo Punto -->
+                <div class="tab-content" id="add-tab">
+                    <form id="addLocationForm">
+                        <div class="form-group">
+                            <label><i class="fas fa-tag"></i> Nombre del Punto / Comercio</label>
+                            <input type="text" id="name" placeholder="Ej: EcoTienda Central" required>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-layer-group"></i> Tipo de Ubicación</label>
+                            <select id="type">
+                                <option value="Comercio">Comercio Adherido</option>
+                                <option value="Punto de Entrega">Punto de Entrega / Retiro</option>
+                                <option value="Hub Principal">Centro de Distribución Eco</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label><i class="fas fa-arrows-alt-v"></i> Latitud</label>
+                                <input type="number" id="lat" step="any" placeholder="-23.4004" required>
+                            </div>
+                            <div class="form-group">
+                                <label><i class="fas fa-arrows-alt-h"></i> Longitud</label>
+                                <input type="number" id="lng" step="any" placeholder="-57.4330" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <button type="button" class="btn btn-secondary" id="pickFromMap">
+                                <i class="fas fa-crosshairs"></i> Seleccionar en el Mapa
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-align-left"></i> Descripción / Observaciones</label>
+                            <textarea id="description" placeholder="Detalles de contacto, horario o instrucciones de entrega..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus-circle"></i> Guardar Ubicación
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Cálculo de Rutas Ecológicas -->
+                <div class="tab-content" id="route-tab">
+                    <div class="route-section">
+                        <h3><i class="fas fa-bicycle"></i> Transporte Ecológico</h3>
+                        <div class="vehicle-selector">
+                            <button type="button" class="vehicle-btn active" data-vehicle="bicicleta">
+                                <i class="fas fa-bicycle" style="color: #10b981;"></i>
+                                <span>Bicicleta (0% CO2)</span>
+                            </button>
+                            <button type="button" class="vehicle-btn" data-vehicle="electrico">
+                                <i class="fas fa-bolt" style="color: #0284c7;"></i>
+                                <span>Vehículo Eléctrico</span>
+                            </button>
+                        </div>
+
+                        <h3><i class="fas fa-route"></i> Trazar Ruta Sustentable</h3>
+                        <div class="form-group">
+                            <label><i class="fas fa-play-circle"></i> Punto de Retiro (Origen)</label>
+                            <select id="startSelect">
+                                <option value="">Seleccionar punto de inicio.</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-flag-checkered"></i> Punto de Entrega (Destino)</label>
+                            <select id="endSelect">
+                                <option value="">Seleccionar destino.</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-accent" id="calculateRoute">
+                            <i class="fas fa-directions"></i> Calcular Ruta Óptima
+                        </button>
+                        <div class="eco-summary-card" id="ecoSummaryCard">
+                            <div class="eco-summary-title">
+                                <i class="fas fa-seedling"></i> Impacto y Tarifa Ecológica
+                            </div>
+                            <div class="eco-metrics-grid">
+                                <div class="eco-metric-item">
+                                    <div class="val" id="ecoDistance">0 km</div>
+                                    <div class="lbl">Distancia</div>
+                                </div>
+                                <div class="eco-metric-item">
+                                    <div class="val" id="ecoCo2">0 kg</div>
+                                    <div class="lbl">CO2 Evitado</div>
+                                </div>
+                                <div class="eco-metric-item">
+                                    <div class="val" id="ecoTariff">0 ₲</div>
+                                    <div class="lbl">Tarifa Est.</div>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" id="btnQrRoute" style="margin-top: 10px; font-size: 13px; padding: 8px 12px;">
+                                <i class="fas fa-qrcode"></i> Generar QR de Entrega
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-top: 10px;">
+                        <button class="btn btn-secondary" id="clearRoute">
+                            <i class="fas fa-times"></i> Limpiar Ruta
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 16px; font-size: 12px; color: var(--text-muted); text-align: center;">
+                        <i class="fas fa-info-circle"></i> Rutas calculadas con el factor de emisión de Concepción: <strong>0.18 kg CO2/km evitado</strong>.
+                        <div style="margin-top: 4px;">Rutas calculadas: <strong id="routesCalculated" style="color: var(--text-primary);">0</strong></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        <div id="map"></div>
+        <button class="mobile-toggle" id="mobileToggle" aria-label="Abrir panel">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+    <div class="toast-container" id="toastContainer"></div>
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <h3 id="modalTitle">Confirmar Acción</h3>
+            <p id="modalMessage">¿Estás seguro de realizar esta acción?</p>
+            
+            <div id="modalQrContainer" style="display: none;">
+                <div class="modal-qr-box" id="qrCodeBox"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modalCancel">Cerrar</button>
+                <button class="btn btn-primary" id="modalConfirm">Aceptar</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
