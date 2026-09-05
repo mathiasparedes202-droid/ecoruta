@@ -32,7 +32,7 @@ if ($origin !== '' && $isAllowedOrigin) {
     header('Vary: Origin');
 }
 
-header("Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With, Accept");
+header("Access-Control-Allow-Headers: Authorization, X-Authorization, Content-Type, X-Requested-With, Accept");
 header("Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS");
 header("Access-Control-Allow-Credentials: true");
 

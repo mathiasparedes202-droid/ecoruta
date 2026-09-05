@@ -12,6 +12,7 @@ async function apiRequest(path, options = {}) {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token ? { 'X-Authorization': `Bearer ${token}` } : {}),
       ...(options.headers || {})
     }
   });

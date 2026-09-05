@@ -9,7 +9,11 @@ async function request(path, method, data) {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'X-Authorization': `Bearer ${token}`
+    },
     body: data ? JSON.stringify(data) : undefined
   });
   const result = await parseResponse(response);
