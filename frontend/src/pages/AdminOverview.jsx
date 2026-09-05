@@ -53,7 +53,7 @@ function formatMinutes(min) {
 }
 
 // Gráfico de líneas SVG con tooltip al pasar el cursor
-function LineChart({ days, series, height = 170 }) {
+function LineChart({ days, series, height = 170, showArea = false }) {
   const wrapRef = useRef(null);
   const [width, setWidth] = useState(560);
   const [hoverIndex, setHoverIndex] = useState(null);
@@ -83,8 +83,8 @@ function LineChart({ days, series, height = 170 }) {
   const hitWidth = innerW / days.length;
 
   return (
-    <div className="admin-line" ref={wrapRef}>
-      <svg className="admin-line__svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Gráfico de líneas">
+    <div className="admin-line" ref={wrapRef} style={{ height }}>
+      <svg className="admin-line__svg" style={{ height }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Gráfico de líneas">
         {[0.25, 0.5, 0.75].map((p) => (
           <line
             key={p}
@@ -94,6 +94,17 @@ function LineChart({ days, series, height = 170 }) {
             y2={padTop + innerH * p}
             className="admin-line__grid"
           />
+        ))}
+
+        {series.map((s) => (
+          showArea && (
+            <polygon
+              key={`${s.key}-area`}
+              points={`${padX},${padTop + innerH} ${points(s)} ${width - padX},${padTop + innerH}`}
+              fill={s.color}
+              fillOpacity=".12"
+            />
+          )
         ))}
 
         {series.map((s) => (
@@ -123,6 +134,17 @@ function LineChart({ days, series, height = 170 }) {
             />
           ))
         )}
+
+        {[0, 0.5, 1].map((p) => (
+          <text
+            key={`y-${p}`}
+            x={4}
+            y={padTop + innerH - innerH * p + 3}
+            className="admin-line__axis"
+          >
+            {Math.round(seriesMax * p)}
+          </text>
+        ))}
 
         {days.map((_, i) => (
           <rect
@@ -157,28 +179,6 @@ function LineChart({ days, series, height = 170 }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function DeliveryBars({ days, height = 190 }) {
-  const maxValue = Math.max(1, ...days.map((day) => Number(day.entregados || 0)));
-
-  return (
-    <div className="admin-bars" style={{ height }} role="img" aria-label="Entregas completadas por día">
-      {days.map((day) => {
-        const value = Number(day.entregados || 0);
-        const heightPercent = value > 0 ? Math.max(8, (value / maxValue) * 100) : 3;
-        return (
-          <div className="admin-bar" key={day.fecha_reporte}>
-            <strong>{fmt(value)}</strong>
-            <div className="admin-bar__track">
-              <div className="admin-bar__fill" style={{ height: `${heightPercent}%` }} title={`${value} entregas`} />
-            </div>
-            <span>{formatDateLabel(day.fecha_reporte)}</span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -389,13 +389,24 @@ export default function AdminOverview() {
       <div className="admin-charts">
         <div className="admin-chart-card">
           <header>
-            <h3><PackageCheck size={16} /> Entregas por día</h3>
+            <h3><TrendingUp size={16} /> Entregas por día</h3>
             <span>últimos 7 días</span>
           </header>
           <div className="admin-chart-legend">
-            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.entregados }}></i>Entregas completadas</span>
+            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.entregados }}></i>Entregadas</span>
+            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.en_camino }}></i>En camino</span>
+            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.cancelados }}></i>Canceladas</span>
           </div>
-          <DeliveryBars days={last7} />
+          <LineChart
+            days={last7}
+            height={220}
+            showArea
+            series={[
+              { key: 'entregados', label: 'Entregadas', color: ESTADO_COLORS.entregados },
+              { key: 'en_camino', label: 'En camino', color: ESTADO_COLORS.en_camino },
+              { key: 'cancelados', label: 'Canceladas', color: ESTADO_COLORS.cancelados }
+            ]}
+          />
         </div>
 
         <div className="admin-chart-card">

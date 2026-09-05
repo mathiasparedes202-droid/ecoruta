@@ -3223,6 +3223,12 @@ nav a { color: #526963; font-weight: 600; }
   font-size: 10px;
 }
 
+.admin-line__axis {
+  fill: #9aa9a0;
+  font-family: inherit;
+  font-size: 9px;
+}
+
 .admin-line__tooltip {
   background: #173f3b;
   border-radius: 9px;
