@@ -1,0 +1,20 @@
+{
+  "name": "EcoRuta Repartidor",
+  "short_name": "EcoRuta",
+  "description": "Gestiona tus entregas ecológicas desde cualquier dispositivo.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#174c43",
+  "background_color": "#f4f8f3",
+  "icons": [
+    {
+      "src": "/EcoRuta%20Logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
