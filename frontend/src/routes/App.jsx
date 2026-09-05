@@ -7,7 +7,10 @@ import Recupercion_contrasena from '../pages/Recupercion_contrasena.jsx';
 
 export default function App() {
   const [showAuth, setShowAuth] = useState(false);
-  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('ecoruta_user') || 'null'));
+  const [user, setUser] = useState(() => {
+    const token = localStorage.getItem('ecoruta_token');
+    return token ? JSON.parse(localStorage.getItem('ecoruta_user') || 'null') : null;
+  });
   const [accountOpen, setAccountOpen] = useState(false);
 
   if (window.location.pathname === '/recuperar-contrasena') {
