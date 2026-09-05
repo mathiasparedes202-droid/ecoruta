@@ -25,9 +25,11 @@ applyCors();
 
 set_exception_handler(static function (Throwable $error): never {
     error_log($error->getMessage());
-    $message = ($_ENV['APP_ENV'] ?? 'production') === 'development'
-        ? $error->getMessage() : 'Error interno del servidor';
-    sendJson(['message' => $message], 500);
+    sendJson([
+        'message' => $error->getMessage(),
+        'file' => basename($error->getFile()),
+        'line' => $error->getLine()
+    ], 500);
 });
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
