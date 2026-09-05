@@ -1,3 +1,4 @@
-// Base de la API. En desarrollo queda vacío y usa el proxy de Vite (/api -> localhost:8000).
-// En producción se setea al compilar: VITE_API_URL=https://tu-api.onrender.com
-export const API_BASE = import.meta.env.VITE_API_URL || '';
+// Base de la API: apunta a la API de producción en Render si estamos en producción
+export const API_BASE = (import.meta.env.VITE_API_URL && !import.meta.env.VITE_API_URL.includes('ecoruta-api.onrender.com'))
+  ? import.meta.env.VITE_API_URL
+  : (import.meta.env.PROD ? 'https://ecoruta-1-y5br.onrender.com' : '');

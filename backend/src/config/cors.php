@@ -18,7 +18,7 @@ $allowedOrigins = [
     // $_ENV['APP_URL'] ?? 'http://localhost:8000',
     $_ENV['APP_URL'] ?? 'http://192.168.0.4:8000',
     $_ENV['FRONTEND_URL'] ?? 'http://192.168.0.4:5173',
-    $_ENV['EcoRuta_URL'] ?? 'http://192.168.0.4:5174',
+    'https://ecoruta-six.vercel.app',
 ];
 
 $isAllowedOrigin = $origin !== '' && (

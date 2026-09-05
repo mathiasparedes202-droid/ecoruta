@@ -23,7 +23,7 @@ function applyCors(): void
         $_ENV['BACKEND_URL'] ?? 'http://192.168.0.12:8000',
         $_ENV['FRONTEND_URL'] ?? 'http://192.168.0.12:5173',
         $_ENV['EcoRuta_URL'] ?? 'http://192.168.0.12:5173',
-        $_ENV['ANOTHER_URL'] ?? 'http://192.168.0.12:5173'
+        'https://ecoruta-six.vercel.app',
     ];
 
     $isAllowedOrigin = $origin !== '' && (
