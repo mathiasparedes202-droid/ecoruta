@@ -6,6 +6,12 @@ import 'leaflet-control-geocoder/dist/Control.Geocoder.css';
 import { updatePassword, updateProfile, updateCommerce } from '../services/accountService.js';
 
 const CONCEPCION_CENTER = [-23.4025, -57.4443];
+const LOCATION_MARKER = L.divIcon({
+  className: 'cliente-marker',
+  html: '<div class="cliente-marker-pin"></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11]
+});
 
 export default function AccountPanel({ user, forced = false, onUpdated }) {
   const [profile, setProfile] = useState({ nombre_completo: user.nombre_completo, correo: user.correo, telefono: user.telefono || '' });
@@ -45,7 +51,7 @@ export default function AccountPanel({ user, forced = false, onUpdated }) {
     }).addTo(map);
 
     if (hasCoords) {
-      markerRef.current = L.marker([lat, lng]).addTo(map);
+      markerRef.current = L.marker([lat, lng], { icon: LOCATION_MARKER }).addTo(map);
     }
 
     map.on('click', (event) => {
@@ -54,7 +60,7 @@ export default function AccountPanel({ user, forced = false, onUpdated }) {
       if (markerRef.current) {
         markerRef.current.setLatLng([clickLat, clickLng]);
       } else {
-        markerRef.current = L.marker([clickLat, clickLng]).addTo(map);
+        markerRef.current = L.marker([clickLat, clickLng], { icon: LOCATION_MARKER }).addTo(map);
       }
     });
 
@@ -67,7 +73,7 @@ export default function AccountPanel({ user, forced = false, onUpdated }) {
         if (markerRef.current) {
           markerRef.current.setLatLng([geoLat, geoLng]);
         } else {
-          markerRef.current = L.marker([geoLat, geoLng]).addTo(map);
+          markerRef.current = L.marker([geoLat, geoLng], { icon: LOCATION_MARKER }).addTo(map);
         }
       });
       map.addControl(geocoder);

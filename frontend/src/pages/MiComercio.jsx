@@ -3,6 +3,12 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 const CONCEPCION_CENTER = [-23.4025, -57.4443];
+const LOCATION_MARKER = L.divIcon({
+  className: 'cliente-marker',
+  html: '<div class="cliente-marker-pin"></div>',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11]
+});
 
 export default function CommercePage({ user }) {
   const mapRef = useRef(null);
@@ -24,7 +30,7 @@ export default function CommercePage({ user }) {
     }).addTo(map);
 
     if (hasCoords) {
-      L.marker([lat, lng]).addTo(map);
+      L.marker([lat, lng], { icon: LOCATION_MARKER }).addTo(map);
     }
 
     mapRef.current = map;
