@@ -42,18 +42,18 @@ export default function MerchantDashboard({
             const base = {
               id: pedido.id_pedido ?? pedido.id,
               id_comercio: pedido.id_comercio,
-              direccionOrigen: pedido.direccion_origen ?? pedido.direccionOrigen ?? 'â€”',
+              direccionOrigen: pedido.direccion_origen ?? pedido.direccionOrigen ?? '—',
               direccionDestino: pedido.direccion_destino ?? pedido.direccionDestino,
-              detallePaquete: pedido.detalle_paquete ?? pedido.detallePaquete ?? 'â€”',
+              detallePaquete: pedido.detalle_paquete ?? pedido.detallePaquete ?? '—',
               pesoKg: pedido.peso_kg ?? pedido.pesoKg ?? null,
               estado: pedido.nombre_estado ?? pedido.estado ?? 'Pendiente',
-              fechaSolicitud: pedido.fecha_solicitud ?? pedido.fechaSolicitud ?? 'â€”',
-              fechaEntrega: pedido.fecha_entrega ?? pedido.fechaEntrega ?? 'â€”',
+              fechaSolicitud: pedido.fecha_solicitud ?? pedido.fechaSolicitud ?? '—',
+              fechaEntrega: pedido.fecha_entrega ?? pedido.fechaEntrega ?? '—',
               tarifaEcologica: Number(pedido.tarifa_ecologica ?? pedido.tarifaEcologica ?? 0),
               co2Ahorrado: Number(pedido.co2_ahorrado_kg ?? pedido.co2Ahorrado ?? 0),
               distanciaKm: pedido.distancia_km ?? pedido.distanciaKm ?? null,
               observaciones: pedido.observaciones ?? pedido.observaciones ?? null,
-              razonSocial: pedido.razon_social ?? pedido.razonSocial ?? 'â€”',
+              razonSocial: pedido.razon_social ?? pedido.razonSocial ?? '—',
               cliente: pedido.cliente_nombre ?? pedido.destinatario_nombre ?? ''
             };
             const qrPayload = buildOrderQrPayload({ id_pedido: base.id, id_comercio: pedido.id_comercio ?? targetCommerce });
@@ -93,7 +93,7 @@ export default function MerchantDashboard({
     {
       label: 'Total Pedidos',
       value: String(myPedidos.length),
-      sub: 'HistÃ³rico'
+      sub: 'Histórico'
     },
     {
       label: 'Pendientes',
@@ -102,7 +102,7 @@ export default function MerchantDashboard({
           (p) => p.estado === 'Pendiente'
         ).length
       ),
-      sub: 'Esperando asignaciÃ³n'
+      sub: 'Esperando asignación'
     },
     {
       label: 'En Camino',
@@ -111,7 +111,7 @@ export default function MerchantDashboard({
           (p) => p.estado === 'En Camino'
         ).length
       ),
-      sub: 'En trÃ¡nsito'
+      sub: 'En tránsito'
     },
     {
       label: 'Entregados',
@@ -133,7 +133,7 @@ export default function MerchantDashboard({
       sub: 'En entregas eco.'
     },
     {
-      label: 'COâ‚‚ Ahorrado',
+      label: 'CO₂ Ahorrado',
       value: `${myPedidos
         .reduce(
           (s, p) => s + Number(p.co2Ahorrado || 0),
@@ -156,7 +156,7 @@ export default function MerchantDashboard({
           </h2>
 
           <p>
-            Portal del comercio Â· Panel principal
+            Portal del comercio · Panel principal
           </p>
         </div>
 
@@ -170,7 +170,7 @@ export default function MerchantDashboard({
       </div>
 
 
-      {/* ESTADÃSTICAS */}
+      {/* ESTADÍSTICAS */}
 
       <div className="dashboard-stats">
 
@@ -203,7 +203,7 @@ export default function MerchantDashboard({
 
           <div>
             <h2>
-              Ãšltimos Pedidos
+              Ultimos Pedidos
             </h2>
           </div>
 
@@ -222,7 +222,7 @@ export default function MerchantDashboard({
         {myPedidos.length === 0 ? (
 
           <p className="status">
-            {loading ? 'Cargando pedidos...' : 'AÃºn no tienes pedidos registrados.'}
+            {loading ? 'Cargando pedidos...' : 'Aun no tienes pedidos registrados.'}
           </p>
 
         ) : (
@@ -300,8 +300,8 @@ export default function MerchantDashboard({
                     <td>
                       <button
                         type="button"
-                        title="Ver cÃ³digo QR del pedido"
-                        aria-label={`Ver cÃ³digo QR del pedido ${pedido.id}`}
+                        title="Ver código QR del pedido"
+                        aria-label={`Ver código QR del pedido ${pedido.id}`}
                         onClick={() => setSelectedOrder(pedido)}
                         style={{
                           alignItems: 'center',
@@ -346,23 +346,23 @@ export default function MerchantDashboard({
               className="auth-close"
               type="button"
               onClick={() => setSelectedOrder(null)}
-              aria-label="Cerrar cÃ³digo QR"
+              aria-label="Cerrar código QR"
             >
               x
             </button>
             <div className="account-panel" style={{ textAlign: 'center', width: '100%' }}>
-              <p className="eyebrow">CÃ³digo QR del pedido</p>
+              <p className="eyebrow">Código QR del pedido</p>
               <h2>Pedido #{selectedOrder.id}</h2>
               {selectedOrder.qrDataUrl ? (
                 <img
                   src={selectedOrder.qrDataUrl}
-                  alt={`CÃ³digo QR del pedido ${selectedOrder.id}`}
+                  alt={`Código QR del pedido ${selectedOrder.id}`}
                   style={{ background: '#fff', border: '1px solid #dce7df', borderRadius: '12px', display: 'block', margin: '20px auto', padding: '10px', width: '260px' }}
                 />
               ) : (
                 <p className="status">Generando QR...</p>
               )}
-              <p className="account-intro">Escanea este cÃ³digo con la aplicaciÃ³n del repartidor.</p>
+              <p className="account-intro">Escanea este código con la aplicación del repartidor.</p>
               {selectedOrder.qrDataUrl && (
                 <a
                   className="primary-action"
@@ -378,7 +378,7 @@ export default function MerchantDashboard({
       )}
 
 
-      {/* ACCIONES RÃPIDAS */}
+      {/* ACCIONES RÁPIDAS */}
 
       <div className="module-grid">
 
@@ -429,11 +429,11 @@ export default function MerchantDashboard({
         <article className="module-card module-card--blue">
 
           <h2>
-            ConfiguraciÃ³n
+            Configuración
           </h2>
 
           <p>
-            Administra la informaciÃ³n de tu comercio.
+            Administra la información de tu comercio.
           </p>
 
           <button
