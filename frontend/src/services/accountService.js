@@ -2,8 +2,22 @@ import { API_BASE } from './env';
 
 async function request(path, method, data) {
   const token = localStorage.getItem('ecoruta_token');
-  const response = await fetch(`${API_BASE}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: data ? JSON.stringify(data) : undefined });
+  if (!token) {
+    throw new Error('Sesión no autenticada. Iniciá sesión nuevamente.');
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: data ? JSON.stringify(data) : undefined
+  });
   const result = await parseResponse(response);
+  if (response.status === 401) {
+    localStorage.removeItem('ecoruta_token');
+    localStorage.removeItem('ecoruta_user');
+    window.dispatchEvent(new Event('ecoruta-auth-required'));
+  }
   if (!response.ok) throw new Error(result.message || 'No se pudo completar la operación');
   return result;
 }
