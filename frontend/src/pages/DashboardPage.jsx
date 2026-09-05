@@ -238,7 +238,7 @@ export default function DashboardPage({ user, onLogout, onUserUpdate }) {
   }
 
   return (
-    <main className="dashboard">
+    <main className={`dashboard ${Number(user.id_rol) === 3 ? 'dashboard--admin' : ''}`}>
 
       {/* ================= SIDEBAR ================= */}
 
