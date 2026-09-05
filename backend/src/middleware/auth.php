@@ -23,7 +23,8 @@ function authorizationHeader(): string
         }
     }
 
-    return (string) ($_SERVER['HTTP_X_AUTHORIZATION'] ?? '');
+    $fallbackToken = trim((string) ($_GET['access_token'] ?? ''));
+    return $fallbackToken !== '' ? "Bearer {$fallbackToken}" : (string) ($_SERVER['HTTP_X_AUTHORIZATION'] ?? '');
 }
 
 function requireAuth(): object

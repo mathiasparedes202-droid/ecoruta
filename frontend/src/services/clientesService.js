@@ -6,13 +6,14 @@ async function apiRequest(path, options = {}) {
     throw new Error('Sesión no autenticada. Iniciá sesión nuevamente.');
   }
 
-  const response = await fetch(`${API_BASE}/api${path}`, {
+  const separator = path.includes('?') ? '&' : '?';
+  const url = `${API_BASE}/api${path}${separator}access_token=${encodeURIComponent(token)}`;
+  const response = await fetch(url, {
     ...options,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(token ? { 'X-Authorization': `Bearer ${token}` } : {}),
       ...(options.headers || {})
     }
   });
