@@ -2,6 +2,7 @@ import { FaBicycle, FaPowerOff, FaSyncAlt } from 'react-icons/fa';
 import { RepartidorUser } from '../../types/repartidor';
 import { TurnoState } from './TurnControl';
 import NotificationsBell from './NotificationsBell';
+import logo from '../../assets/EcoRuta Logo.png';
 
 interface Props { user: RepartidorUser; isAvailable: boolean; turno: TurnoState; isRefreshing: boolean; onAvailabilityChange: () => void; onRefresh: () => void; onLogout: () => void; onOpenOrders?: () => void; }
 
@@ -15,7 +16,7 @@ const RepartidorHeader = ({ user, isAvailable, turno, isRefreshing, onAvailabili
   <header className="courier-header">
     <div className="courier-brand">
       <span className="brand-mark">
-
+        <img src={logo} alt="EcoRuta" />
       </span>
       <div>
         <strong>EcoRuta</strong>

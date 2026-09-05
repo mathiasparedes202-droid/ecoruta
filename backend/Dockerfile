@@ -38,10 +38,10 @@ RUN chown -R www-data:www-data /var/www/html
 
 # Script de inicio compatible con el puerto dinámico de Render ($PORT)
 RUN echo '#!/bin/bash\n\
-PORT="${PORT:-80}"\n\
-sed -i "s/Listen 80/Listen $PORT/g" /etc/apache2/ports.conf\n\
-sed -i "s/:80/:$PORT/g" /etc/apache2/sites-available/000-default.conf\n\
-exec apache2-foreground' > /usr/local/bin/run-app.sh && chmod +x /usr/local/bin/run-app.sh
+    PORT="${PORT:-80}"\n\
+    sed -i "s/Listen 80/Listen $PORT/g" /etc/apache2/ports.conf\n\
+    sed -i "s/:80/:$PORT/g" /etc/apache2/sites-available/000-default.conf\n\
+    exec apache2-foreground' > /usr/local/bin/run-app.sh && chmod +x /usr/local/bin/run-app.sh
 
 EXPOSE 80 10000
 
