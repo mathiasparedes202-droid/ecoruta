@@ -2305,14 +2305,20 @@ nav a { color: #526963; font-weight: 600; }
   border: 1px solid #dce7df;
   border-radius: 16px;
   box-shadow: 0 6px 18px rgba(31, 67, 56, .04);
+  overflow: hidden;
   padding: 20px;
 }
 
 .admin-chart-card > header {
   align-items: center;
+  background: #f5faf4;
+  border: 1px solid #dce9df;
+  border-radius: 10px;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin: -4px -4px 18px;
+  min-height: 42px;
+  padding: 7px 11px;
 }
 
 .admin-chart-card > header h3 {
@@ -2324,6 +2330,22 @@ nav a { color: #526963; font-weight: 600; }
   gap: 7px;
   margin: 0;
 }
+
+.admin-chart-card > header h3 svg {
+  background: #1d5b50;
+  border-radius: 50%;
+  color: #fff;
+  padding: 5px;
+  height: 28px;
+  width: 28px;
+}
+
+.admin-chart-card--deliveries > header { background: #edf7ed; border-color: #c9e1cc; }
+.admin-chart-card--status > header { background: #eef5f7; border-color: #cbdfe2; }
+.admin-chart-card--income > header { background: #fcf5e7; border-color: #ecd9ae; }
+.admin-chart-card--deliveries > header h3 svg { background: #39715d; }
+.admin-chart-card--status > header h3 svg { background: #3a7183; }
+.admin-chart-card--income > header h3 svg { background: #b07a2e; }
 
 .admin-chart-card > header span {
   color: #7d8f85;

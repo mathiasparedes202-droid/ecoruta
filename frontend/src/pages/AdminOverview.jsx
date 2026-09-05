@@ -387,7 +387,7 @@ export default function AdminOverview() {
 
       {/* Gráficos */}
       <div className="admin-charts">
-        <div className="admin-chart-card">
+        <div className="admin-chart-card admin-chart-card--deliveries">
           <header>
             <h3><TrendingUp size={16} /> Entregas por día</h3>
             <span>últimos 7 días</span>
@@ -409,7 +409,7 @@ export default function AdminOverview() {
           />
         </div>
 
-        <div className="admin-chart-card">
+        <div className="admin-chart-card admin-chart-card--status">
           <header>
             <h3><CircleCheck size={16} /> Estado de los pedidos hoy</h3>
             <span>{fmt(today.total_pedidos)} en total</span>
@@ -440,7 +440,7 @@ export default function AdminOverview() {
           )}
         </div>
 
-        <div className="admin-chart-card">
+        <div className="admin-chart-card admin-chart-card--income">
           <header>
             <h3><Wallet size={16} /> Ingresos por día</h3>
             <span>cobrado vs. pendiente</span>
