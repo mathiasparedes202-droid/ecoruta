@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+// Render puede retirar Authorization antes de que PHP lo reciba.
+// El frontend académico envía access_token como respaldo.
+if (empty($_SERVER['HTTP_AUTHORIZATION']) && !empty($_GET['access_token'])) {
+    $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . (string) $_GET['access_token'];
+}
+
 require_once __DIR__ . '/vendor/autoload.php';
 
 if (class_exists(Dotenv\Dotenv::class) && file_exists(__DIR__ . '/.env')) {

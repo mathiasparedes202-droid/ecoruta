@@ -1,5 +1,8 @@
 FROM php:8.2-apache
 
+# Build marker: auth fallback for Render deployment.
+ENV ECORUTA_AUTH_FALLBACK=enabled
+
 # Instalar dependencias del sistema y extensiones de PHP requeridas
 RUN apt-get update && apt-get install -y \
     ca-certificates \
