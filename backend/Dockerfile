@@ -2,6 +2,7 @@ FROM php:8.2-apache
 
 # Instalar dependencias del sistema y extensiones de PHP requeridas
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     unzip \
     git \
     libzip-dev \

@@ -25,8 +25,18 @@ function database(): PDO
 
     $ssl = filter_var($_ENV['DB_SSL'] ?? getenv('DB_SSL') ?? false, FILTER_VALIDATE_BOOLEAN);
     $sslCa = $_ENV['DB_SSL_CA'] ?? getenv('DB_SSL_CA') ?: null;
+
+    if (!$sslCa && $ssl) {
+        if (file_exists('/etc/ssl/certs/ca-certificates.crt')) {
+            $sslCa = '/etc/ssl/certs/ca-certificates.crt';
+        } elseif (file_exists('C:\\xampp\\apache\\bin\\curl-ca-bundle.crt')) {
+            $sslCa = 'C:\\xampp\\apache\\bin\\curl-ca-bundle.crt';
+        }
+    }
+
     if ($sslCa && file_exists($sslCa)) {
         $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+        $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
     } elseif ($ssl) {
         $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
     }
