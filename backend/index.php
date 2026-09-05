@@ -33,6 +33,15 @@ set_exception_handler(static function (Throwable $error): never {
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
+if ($method === 'GET' && ($path === '/' || $path === '')) {
+    sendJson([
+        'status' => 'ok',
+        'service' => 'ecoruta-api',
+        'message' => 'EcoRuta API v1.0 activa',
+        'health' => '/api/health',
+    ]);
+}
+
 if ($method === 'GET' && $path === '/api/health') {
     $mailUser = trim((string) ($_ENV['MAIL_USERNAME'] ?? ''));
     $mailPassword = preg_replace('/\s+/', '', (string) ($_ENV['MAIL_PASSWORD'] ?? ''));
