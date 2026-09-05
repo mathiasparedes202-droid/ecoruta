@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AccountPanel from '../components/AccountPanel.jsx';
 import AuthPanel from '../components/AuthPanel.jsx';
 import DashboardPage from '../pages/DashboardPage.jsx';
@@ -12,6 +12,12 @@ export default function App() {
     return token ? JSON.parse(localStorage.getItem('ecoruta_user') || 'null') : null;
   });
   const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    const handleAuthRequired = () => setUser(null);
+    window.addEventListener('ecoruta-auth-required', handleAuthRequired);
+    return () => window.removeEventListener('ecoruta-auth-required', handleAuthRequired);
+  }, []);
 
   if (window.location.pathname === '/recuperar-contrasena') {
     return <Recupercion_contrasena />;
