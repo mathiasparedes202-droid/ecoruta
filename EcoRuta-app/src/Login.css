@@ -167,6 +167,20 @@
 
 .form-header-area {
   margin-bottom: 28px;
+  text-align: center;
+}
+
+.eco-form-logo-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.eco-form-logo {
+  width: min(220px, 68%);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 18px rgba(17, 94, 75, 0.14));
 }
 
 .form-header-area h2 {

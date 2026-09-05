@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FaCamera, FaRedo, FaSpinner } from 'react-icons/fa';
+import { FaBolt, FaCamera, FaRedo, FaSpinner } from 'react-icons/fa';
 import { decodeQrFromVideoFrame } from '../../lib/qr';
 
 interface Props {
@@ -21,6 +21,8 @@ const ScanCam = ({ onScan, onClose }: Props) => {
   const lockedRef = useRef(false);
   const [state, setState] = useState<CamState>(CamState.Requesting);
   const [errorMsg, setErrorMsg] = useState('');
+  const [flashOn, setFlashOn] = useState(false);
+  const [scanSuccess, setScanSuccess] = useState(false);
 
   const stop = useCallback(() => {
     if (tickRef.current) {
@@ -34,6 +36,7 @@ const ScanCam = ({ onScan, onClose }: Props) => {
   const requestCamera = useCallback(async () => {
     setState(CamState.Requesting);
     setErrorMsg('');
+    setScanSuccess(false);
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         setState(CamState.Error);
@@ -41,7 +44,7 @@ const ScanCam = ({ onScan, onClose }: Props) => {
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
       });
       streamRef.current = stream;
@@ -65,6 +68,29 @@ const ScanCam = ({ onScan, onClose }: Props) => {
     }
   }, []);
 
+  const toggleFlash = useCallback(() => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+
+    const capabilities = track.getCapabilities?.();
+    const hasFlash = !!capabilities && 'torch' in capabilities;
+    if (!hasFlash) return;
+
+    const nextState = !flashOn;
+    track.applyConstraints({
+      advanced: [{ torch: nextState } as any],
+    } as any).catch(() => undefined);
+    setFlashOn(nextState);
+  }, [flashOn]);
+
+  const handleSuccessfulScan = useCallback((code: string) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate?.([60, 40, 80]);
+    }
+    setScanSuccess(true);
+    setTimeout(() => onScan(code), 240);
+  }, [onScan]);
+
   // Lectura del frame en vivo hasta detectar un QR
   useEffect(() => {
     if (state !== CamState.Running) return;
@@ -78,7 +104,7 @@ const ScanCam = ({ onScan, onClose }: Props) => {
           if (code) {
             lockedRef.current = true;
             stop();
-            onScan(code);
+            handleSuccessfulScan(code);
             return;
           }
         } catch {
@@ -92,7 +118,7 @@ const ScanCam = ({ onScan, onClose }: Props) => {
     return () => {
       if (tickRef.current) cancelAnimationFrame(tickRef.current);
     };
-  }, [state, stop, onScan]);
+  }, [state, stop, handleSuccessfulScan]);
 
   useEffect(() => () => stop(), [stop]);
 
@@ -123,12 +149,17 @@ const ScanCam = ({ onScan, onClose }: Props) => {
               <i />
               <i />
             </div>
-            <p className="scan-cam__hint">Apunta la cámara al código QR</p>
+            <p className="scan-cam__hint">{scanSuccess ? 'QR detectado' : 'Apunta la cámara al código QR'}</p>
           </>
         )}
       </div>
 
       <div className="scan-cam__actions">
+        {state === CamState.Running && (
+          <button type="button" className="scan-cam__flash" onClick={toggleFlash} aria-label="Encender flash">
+            <FaBolt /> {flashOn ? 'Flash on' : 'Flash'}
+          </button>
+        )}
         {(state === CamState.Error || state === CamState.Denied) && (
           <button className="turn-control__btn --start" onClick={requestCamera}>
             <FaRedo /> Reintentar

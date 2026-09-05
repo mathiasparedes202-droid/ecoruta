@@ -4,6 +4,7 @@ import { FaShieldAlt, FaMotorcycle, FaBicycle } from 'react-icons/fa';
 import './Login.css';
 import { API } from './config';
 import { RepartidorUser } from './types/repartidor';
+import logo from './assets/EcoRuta Logo.png';
 
 type Props = {
   onLogin?: (user: RepartidorUser) => void;
@@ -181,6 +182,9 @@ const Login: React.FC<Props> = ({ onLogin }) => {
           {mode === 'login' ? (
             <>
               <div className="form-header-area">
+                <div className="eco-form-logo-wrap">
+                  <img src={logo} alt="EcoRuta" className="eco-form-logo" />
+                </div>
                 <h2>Acceso Repartidores</h2>
                 <p>Ingresá con tu cuenta para gestionar tus entregas.</p>
               </div>
@@ -260,6 +264,9 @@ const Login: React.FC<Props> = ({ onLogin }) => {
           ) : (
             <>
               <div className="form-header-area">
+                <div className="eco-form-logo-wrap">
+                  <img src={logo} alt="EcoRuta" className="eco-form-logo" />
+                </div>
                 <h2>Únete al equipo</h2>
                 <p>Creá tu cuenta de repartidor para empezar a entregar.</p>
               </div>

@@ -202,6 +202,17 @@ const DeliveryConfirmationModal = ({ order, onClose, onConfirm }: Props) => {
                 <button type="button" className="qr-upload-button" onClick={() => fileInputRef.current?.click()} disabled={isReadingQr}>
                   <FaUpload /> {isReadingQr ? 'Leyendo QR…' : 'Subir foto'}
                 </button>
+                <button
+                  type="button"
+                  className="qr-manual-button"
+                  onClick={() => {
+                    setMethod('qr');
+                    setCode('');
+                    setQrError('');
+                  }}
+                >
+                  Ingresar manual
+                </button>
               </div>
             )}
 
