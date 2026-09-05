@@ -86,9 +86,9 @@ export default function AuthPanel({
         );
       }
 
-      if (!result.user) {
+      if (!result.user || !result.token) {
         throw new Error(
-          'La API no devolvió los datos de la sesión.'
+          'La API no devolvió una sesión válida. Intentá nuevamente.'
         );
       }
 
@@ -98,13 +98,10 @@ export default function AuthPanel({
         JSON.stringify(result.user)
       );
 
-      // Guardar token si tu backend lo devuelve
-      if (result.token) {
-        localStorage.setItem(
-          'ecoruta_token',
-          result.token
-        );
-      }
+      localStorage.setItem(
+        'ecoruta_token',
+        result.token
+      );
 
       // Avisar a App.jsx / LoginPage.jsx
       onAuthenticated(result.user);
