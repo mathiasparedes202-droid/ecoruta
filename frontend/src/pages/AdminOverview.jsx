@@ -161,6 +161,28 @@ function LineChart({ days, series, height = 170 }) {
   );
 }
 
+function DeliveryBars({ days, height = 190 }) {
+  const maxValue = Math.max(1, ...days.map((day) => Number(day.entregados || 0)));
+
+  return (
+    <div className="admin-bars" style={{ height }} role="img" aria-label="Entregas completadas por día">
+      {days.map((day) => {
+        const value = Number(day.entregados || 0);
+        const heightPercent = value > 0 ? Math.max(8, (value / maxValue) * 100) : 3;
+        return (
+          <div className="admin-bar" key={day.fecha_reporte}>
+            <strong>{fmt(value)}</strong>
+            <div className="admin-bar__track">
+              <div className="admin-bar__fill" style={{ height: `${heightPercent}%` }} title={`${value} entregas`} />
+            </div>
+            <span>{formatDateLabel(day.fecha_reporte)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AdminOverview() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -367,20 +389,13 @@ export default function AdminOverview() {
       <div className="admin-charts">
         <div className="admin-chart-card">
           <header>
-            <h3><TrendingUp size={16} /> Entregas por día</h3>
+            <h3><PackageCheck size={16} /> Entregas por día</h3>
             <span>últimos 7 días</span>
           </header>
           <div className="admin-chart-legend">
-            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.entregados }}></i>Entregadas</span>
-            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.cancelados }}></i>Canceladas</span>
+            <span><i className="admin-chart-legend__dot" style={{ background: ESTADO_COLORS.entregados }}></i>Entregas completadas</span>
           </div>
-          <LineChart
-            days={last7}
-            series={[
-              { key: 'entregados', label: 'Entregadas', color: ESTADO_COLORS.entregados },
-              { key: 'cancelados', label: 'Canceladas', color: ESTADO_COLORS.cancelados }
-            ]}
-          />
+          <DeliveryBars days={last7} />
         </div>
 
         <div className="admin-chart-card">

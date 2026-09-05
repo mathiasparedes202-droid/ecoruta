@@ -3273,3 +3273,51 @@ nav a { color: #526963; font-weight: 600; }
   height: 8px;
   width: 8px;
 }
+
+.admin-bars {
+  align-items: stretch;
+  display: flex;
+  gap: 14px;
+  height: 190px;
+  padding: 8px 4px 0;
+}
+
+.admin-bar {
+  align-items: center;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.admin-bar strong {
+  color: #28604f;
+  font-size: .75rem;
+}
+
+.admin-bar__track {
+  align-items: flex-end;
+  background: #edf4ed;
+  border-radius: 8px 8px 4px 4px;
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 90px;
+  overflow: hidden;
+  width: min(42px, 100%);
+}
+
+.admin-bar__fill {
+  background: linear-gradient(180deg, #245b55 0%, #173f3b 100%);
+  border-radius: 7px 7px 3px 3px;
+  min-height: 5px;
+  transition: height .25s ease;
+  width: 100%;
+}
+
+.admin-bar > span {
+  color: #81928b;
+  font-size: .63rem;
+  white-space: nowrap;
+}
