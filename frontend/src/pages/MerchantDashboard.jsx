@@ -279,20 +279,22 @@ export default function MerchantDashboard({
 
                     <td>
                     
-                      <span
-                        style={{
-                          color: '#173f3b',
-                          fontFamily: 'Space Grotesk, sans-serif',
-                          fontSize: '.78rem',
-                          fontWeight: 700,
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        $
-                        {Number(
-                          pedido.tarifaEcologica
-                        ).toFixed(2)}
-                      </span>
+                    <span
+                      style={{
+                        color: '#173f3b',
+                        fontFamily: 'Space Grotesk, sans-serif',
+                        fontSize: '.78rem',
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Gs.{" "}
+                      {Number(pedido.tarifaEcologica).toLocaleString('es-PY', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}
+                    </span>
+
 
                     </td>
 
