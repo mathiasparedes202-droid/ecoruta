@@ -124,7 +124,7 @@ export default function MerchantDashboard({
     },
     {
       label: 'Total Invertido',
-      value: `${myPedidos
+value: `${myPedidos
         .reduce(
           (s, p) => s + Number(p.tarifaEcologica || 0),
           0
@@ -139,7 +139,7 @@ export default function MerchantDashboard({
           (s, p) => s + Number(p.co2Ahorrado || 0),
           0
         )
-        .toFixed(2)} kg`,
+        .toFixed(0)} kg`,
       sub: 'Tu huella verde'
     }
   ];

@@ -10,10 +10,6 @@ require_once __DIR__ . '/notificaciones_service.php';
 
 /**
  * Tarifas declaradas para el cálculo de la tarifa ecológica.
- * - Tarifa base: la fija cada comercio (Gs).
- * - Por km recorrido, por kg de peso y por dm³ de volumen aforado.
- * Volumen aforado (dm³) = (alto × ancho × largo en cm) / 1000.
- * Solo se cobran los cargos aplicables; el mínimo es la tarifa base.
  */
 const TARIFA_KM = 2500;
 const TARIFA_KG = 1500;
