@@ -124,12 +124,12 @@ export default function MerchantDashboard({
     },
     {
       label: 'Total Invertido',
-      value: `$${myPedidos
+      value: `GS${myPedidos
         .reduce(
           (s, p) => s + Number(p.tarifaEcologica || 0),
           0
         )
-        .toFixed(2)}`,
+        .toFixed(0)}`,
       sub: 'En entregas eco.'
     },
     {
