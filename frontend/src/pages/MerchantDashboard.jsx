@@ -124,7 +124,7 @@ export default function MerchantDashboard({
     },
     {
       label: 'Total Invertido',
-      value: `GS${myPedidos
+      value: `GS: ${myPedidos
         .reduce(
           (s, p) => s + Number(p.tarifaEcologica || 0),
           0
