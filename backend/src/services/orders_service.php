@@ -15,9 +15,9 @@ require_once __DIR__ . '/notificaciones_service.php';
  * Volumen aforado (dm³) = (alto × ancho × largo en cm) / 1000.
  * Solo se cobran los cargos aplicables; el mínimo es la tarifa base.
  */
-const TARIFA_KM = 2500.0;
-const TARIFA_KG = 1500.0;
-const TARIFA_DM3 = 250.0;
+const TARIFA_KM = 2500;
+const TARIFA_KG = 1500;
+const TARIFA_DM3 = 250;
 
 function calcularTarifaEcologica(float $tarifaBase, float $distanceKm, float $weightKg, ?float $altoCm, ?float $anchoCm, ?float $largoCm): float
 {
@@ -156,7 +156,7 @@ function createOrder(array $body): array
         "SELECT COALESCE(tarifa_base, 0) FROM comercios WHERE id_comercio = {$commerceId}"
     )->fetchColumn();
     if ($tarifaBase <= 0) {
-        $tarifaBase = 12000.0;
+        $tarifaBase = 12000;
     }
     $fee = calcularTarifaEcologica($tarifaBase, $distance, $weight, $alto, $ancho, $largo);
 
@@ -445,7 +445,7 @@ function updateOrder(int $orderId, object $claims, array $body): array
             "SELECT COALESCE(tarifa_base, 0) FROM comercios WHERE id_comercio = {$commerceId}"
         )->fetchColumn();
         if ($tarifaBase <= 0) {
-            $tarifaBase = 12000.0;
+            $tarifaBase = 12000;
         }
 
         $destino = isset($body['direccion_destino']) && trim((string) $body['direccion_destino']) !== ''
@@ -772,7 +772,7 @@ function updateOrderPayment(int $orderId, object $claims, array $body): array
             // Efectivo (puro o la parte en efectivo de un mixto): validar monto recibido y calcular el vuelto.
             $montoEfectivo = $metodo === 'mixto'
                 ? (float) ($order['monto_efectivo'] ?? 0)
-                : ($metodo === 'efectivo' ? $tarifa : 0.0);
+                : ($metodo === 'efectivo' ? $tarifa : 0);
             if ($montoEfectivo > 0) {
                 $montoRecibido = isset($body['monto_recibido']) && is_numeric($body['monto_recibido'])
                     ? (float) $body['monto_recibido']
