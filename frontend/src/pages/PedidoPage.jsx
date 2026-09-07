@@ -23,6 +23,7 @@ import { createOrder, getStoredDestinations, saveStoredDestination, removeStored
 import { fetchClientes } from '../services/clientesService.js';
 import { PARAGUAY_BOUNDS, PARAGUAY_CENTER, inParaguay, boundedNominatim } from '../lib/geografia.js';
 import { toastSuccess, toastError, alertInfo } from '../lib/feedback.js';
+import { formatGs } from '../lib/format.js';
 
 const DEFAULT_CO2_FACTOR = 0.180; // kg CO2 por km
 const TARIFA_KM = 2500; // guaraníes por km
@@ -397,7 +398,7 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
       const efectivo = Number(mixtoEfectivo);
       const transferencia = Number(mixtoTransferencia);
       if (!(efectivo > 0) || !(transferencia > 0) || Math.abs(efectivo + transferencia - feeInfo.total) > 1) {
-        e.mixto = `Los montos deben sumar la tarifa (₲ ${feeInfo.total.toLocaleString('es-PY')})`;
+        e.mixto = `Los montos deben sumar la tarifa (₲ ${formatGs(feeInfo.total)})`;
       }
       if (transferencia > 0 && String(comprobante).trim().length < 5) {
         e.comprobante = 'Anotá el número de comprobante de la transferencia';
@@ -769,7 +770,7 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
               const falta = total - (Number(mixtoEfectivo) || 0) - (Number(mixtoTransferencia) || 0);
               return (
                 <span className={`new-order-hint ${errors.mixto ? 'new-order-hint--error' : ''}`}>
-                  Tarifa: ₲ {total.toLocaleString('es-PY')} · Falta repartir: ₲ {Math.max(0, falta).toLocaleString('es-PY')}
+                  Tarifa: ₲ {formatGs(total)} · Falta repartir: ₲ {formatGs(Math.max(0, falta))}
                   <button type="button" className="new-order-mixto__split" onClick={() => {
                     const mitad = Math.round(total / 2 / 100) * 100;
                     setMixtoEfectivo(String(Math.max(0, total - mitad)));
@@ -856,7 +857,7 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
           <small className="new-order-error">{errors.dimensiones}</small>
           {feeInfo.volumenDm3 > 0 && (
             <span className="new-order-hint">
-              <Box size={13} /> Volumen aforado: {feeInfo.volumenDm3.toFixed(1)} dm³ = {dims.alto} × {dims.ancho} × {dims.largo} cm / 1000. Suma ₲ {(feeInfo.volumenDm3 * TARIFA_DM3).toLocaleString('es-PY')} a la tarifa.
+              <Box size={13} /> Volumen aforado: {feeInfo.volumenDm3.toFixed(1)} dm³ = {dims.alto} × {dims.ancho} × {dims.largo} cm / 1000. Suma ₲ {formatGs(feeInfo.volumenDm3 * TARIFA_DM3)} a la tarifa.
             </span>
           )}
         </Field>
@@ -885,12 +886,12 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
               {feeInfo.rows.map((row, idx) => (
                 <div className="new-order-fee-breakdown__row" key={idx}>
                   <span>{row.label}</span>
-                  <strong>₲ {row.monto.toLocaleString('es-PY')}</strong>
+                  <strong>₲ {formatGs(row.monto)}</strong>
                 </div>
               ))}
               <div className="new-order-fee-breakdown__total">
                 <span>Tarifa ecológica</span>
-                <strong>₲ {feeInfo.total.toLocaleString('es-PY')}</strong>
+                <strong>₲ {formatGs(feeInfo.total)}</strong>
               </div>
             </div>
           </div>

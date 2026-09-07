@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { formatGs } from '../lib/format.js';
 
 const CONCEPCION_CENTER = [-23.4025, -57.4443];
 const LOCATION_MARKER = L.divIcon({
@@ -46,7 +47,7 @@ export default function CommercePage({ user }) {
     ['RUC', user?.ruc],
     ['Dirección de Origen (retiro)', user?.direccion_comercio || user?.direccion_origen],
     ['Ciudad', user?.ciudad],
-    ['Tarifa Base', user?.tarifa_base ? `₲ ${Number(user.tarifa_base).toLocaleString('es-PY')}` : ''],
+    ['Tarifa Base', user?.tarifa_base ? `₲ ${formatGs(user.tarifa_base)}` : ''],
     ['Latitud', hasCoords ? lat.toFixed(6) : ''],
     ['Longitud', hasCoords ? lng.toFixed(6) : '']
   ];

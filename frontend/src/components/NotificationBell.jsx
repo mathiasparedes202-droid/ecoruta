@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Bell, CheckCheck, PackagePlus, UserRound, XCircle } from 'lucide-react';
+import { AlertCircle, Banknote, Bell, CheckCheck, PackagePlus, UserRound, XCircle } from 'lucide-react';
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -10,7 +10,8 @@ const TYPES = {
   nuevo_pedido: { icon: PackagePlus, tone: 'orange' },
   pedido_cancelado: { icon: XCircle, tone: 'red' },
   pedido_asignado: { icon: UserRound, tone: 'blue' },
-  pedido_entregado: { icon: CheckCheck, tone: 'green' }
+  pedido_entregado: { icon: CheckCheck, tone: 'green' },
+  pedido_pagado: { icon: Banknote, tone: 'green' }
 };
 
 function timeAgo(fecha) {
@@ -23,7 +24,7 @@ function timeAgo(fecha) {
   return date.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function NotificationBell({ onNavigateToOrders }) {
+export default function NotificationBell({ roleId = 3, onNavigateToOrders }) {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
@@ -115,7 +116,7 @@ export default function NotificationBell({ onNavigateToOrders }) {
                       </strong>
                       <p>{n.mensaje}</p>
                       <small>{timeAgo(n.fecha)}</small>
-                      {n.tipo === 'nuevo_pedido' && (
+                      {n.tipo === 'nuevo_pedido' && roleId === 3 && (
                         <button
                           type="button"
                           className="admin-notif__assign"

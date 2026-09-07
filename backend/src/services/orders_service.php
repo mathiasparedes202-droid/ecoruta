@@ -276,15 +276,19 @@ function assignOrderToRepartidor(int $orderId, array $body): array
 
     $pdo = database();
 
-    $repartidor = $pdo->prepare('SELECT id_repartidor FROM repartidores WHERE id_repartidor = :id');
+    $repartidor = $pdo->prepare(
+        'SELECT r.id_repartidor, u.nombre_completo FROM repartidores r
+         JOIN usuarios u ON u.id_usuario = r.id_usuario WHERE r.id_repartidor = :id'
+    );
     $repartidor->execute(['id' => $repartidorId]);
-    if (!$repartidor->fetch()) {
+    $repartidor = $repartidor->fetch();
+    if (!$repartidor) {
         sendJson(['message' => 'Ese repartidor no existe'], 422);
     }
 
     $pdo->beginTransaction();
     try {
-        $current = $pdo->prepare('SELECT id_estado FROM pedidos WHERE id_pedido = :id FOR UPDATE');
+        $current = $pdo->prepare('SELECT id_estado, id_comercio FROM pedidos WHERE id_pedido = :id FOR UPDATE');
         $current->execute(['id' => $orderId]);
         $order = $current->fetch();
         if (!$order) {
@@ -333,6 +337,17 @@ function assignOrderToRepartidor(int $orderId, array $body): array
         $orderId
     );
 
+    if (isset($order['id_comercio']) && (int) $order['id_comercio'] > 0) {
+        $repartidorNombre = trim((string) ($repartidor['nombre_completo'] ?? 'Un repartidor'));
+        notifyComercio(
+            (int) $order['id_comercio'],
+            'pedido_asignado',
+            'Tu pedido ya tiene repartidor',
+            "El pedido #{$orderId} fue asignado a {$repartidorNombre}. Entrá a Mis Pedidos para seguirlo.",
+            $orderId
+        );
+    }
+
     return [
         'message' => 'Pedido asignado. El repartidor ya recibió el aviso.',
         'id_pedido' => $orderId,
@@ -348,7 +363,7 @@ function updateOrderStatus(int $orderId, array $body): array
     $pdo->beginTransaction();
 
     try {
-        $current = $pdo->prepare('SELECT id_estado FROM pedidos WHERE id_pedido = :id FOR UPDATE');
+        $current = $pdo->prepare('SELECT id_estado, id_comercio, id_repartidor FROM pedidos WHERE id_pedido = :id FOR UPDATE');
         $current->execute(['id' => $orderId]);
         $order = $current->fetch();
         if (!$order) {
@@ -381,6 +396,16 @@ function updateOrderStatus(int $orderId, array $body): array
     } catch (Throwable $error) {
         $pdo->rollBack();
         throw $error;
+    }
+
+    if ($newStatus === 4 && isset($order['id_comercio']) && (int) $order['id_comercio'] > 0) {
+        notifyComercio(
+            (int) $order['id_comercio'],
+            'pedido_entregado',
+            'Tu pedido fue entregado',
+            "El pedido #{$orderId} fue entregado al destinatario. Gracias por confiar en EcoRuta.",
+            $orderId
+        );
     }
 
     return ['message' => 'Estado del pedido actualizado'];
@@ -817,6 +842,16 @@ function updateOrderPayment(int $orderId, object $claims, array $body): array
             'pedido_pagado',
             'Ya se confirmó el pago',
             "El pedido #{$orderId} ya fue pagado {$metodoLabel}. No tenés que cobrarlo al entregar.",
+            $orderId
+        );
+    }
+
+    if (isset($order['id_comercio']) && (int) $order['id_comercio'] > 0) {
+        notifyComercio(
+            (int) $order['id_comercio'],
+            'pedido_pagado',
+            'Tu pedido fue pagado',
+            "El pedido #{$orderId} quedó marcado como pagado {$metodoLabel}. Ya está al día.",
             $orderId
         );
     }

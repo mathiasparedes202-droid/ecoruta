@@ -7,6 +7,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { fetchOrders, buildOrderQrPayload, generateOrderQrDataUrl } from '../services/orderService.js';
+import { formatGs } from '../lib/format.js';
 
 function normalizeOrder(raw) {
   return {
@@ -124,12 +125,12 @@ export default function MerchantDashboard({
     },
     {
       label: 'Total Invertido',
-      value: `₲ ${myPedidos
-        .reduce(
+      value: `₲ ${formatGs(
+        myPedidos.reduce(
           (s, p) => s + Number(p.tarifaEcologica || 0),
           0
         )
-        .toLocaleString('es-PY')}`,
+      )}`,
       sub: 'En entregas eco.'
     },
     {
@@ -287,7 +288,7 @@ export default function MerchantDashboard({
                           whiteSpace: 'nowrap'
                         }}
                       >
-                      ₲ {Number(pedido.tarifaEcologica || 0).toLocaleString('es-PY')}
+                      ₲ {formatGs(pedido.tarifaEcologica)}
                       </span>
 
                     </td>

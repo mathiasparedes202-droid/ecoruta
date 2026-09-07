@@ -328,8 +328,15 @@ export default function DashboardPage({ user, onLogout, onUserUpdate }) {
         className="dashboard-content"
         id="panel"
       >
-        {Number(user.id_rol) === 3 && (
-          <NotificationBell onNavigateToOrders={() => setActiveModule('orders')} />
+        {(Number(user.id_rol) === 1 || Number(user.id_rol) === 3) && (
+          <NotificationBell
+            roleId={Number(user.id_rol)}
+            onNavigateToOrders={() =>
+              setActiveModule(
+                Number(user.id_rol) === 1 ? 'my-orders' : 'orders'
+              )
+            }
+          />
         )}
 
         {/* ================= PAGE ACTIVA ================= */}

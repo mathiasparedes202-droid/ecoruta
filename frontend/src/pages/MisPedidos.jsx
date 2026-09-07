@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { fetchOrders, buildOrderQrPayload, generateOrderQrDataUrl } from '../services/orderService.js';
 import { markOrderPaid, updateOrder } from '../services/adminService.js';
+import { formatGs } from '../lib/format.js';
 
 function toDateInputValue(value) {
   if (!value || value === '—') return '';
@@ -202,7 +203,7 @@ export default function MyOrdersPage({ user, onNavigate }) {
       if (needsMontoRecibido) {
         const recibido = Number(payDraft.montoRecibido);
         if (!(recibido > 0) || recibido < cashTarget) {
-          throw new Error(`El efectivo recibido debe ser al menos ₲ ${cashTarget.toLocaleString('es-PY')}.`);
+          throw new Error(`El efectivo recibido debe ser al menos ₲ ${formatGs(cashTarget)}.`);
         }
         extra.monto_recibido = recibido;
       }
@@ -639,7 +640,7 @@ export default function MyOrdersPage({ user, onNavigate }) {
                           whiteSpace: 'nowrap'
                         }}
                       >
-₲ {Number(pedido.tarifaEcologica || 0).toLocaleString('es-PY')}
+₲ {formatGs(pedido.tarifaEcologica)}
                       </span>
 
                     </td>
@@ -654,7 +655,7 @@ export default function MyOrdersPage({ user, onNavigate }) {
                         title={
                           pedido.metodoPago === 'mixto'
                             ? (pedido.pagado
-                              ? `Cobrado: Efectivo ₲ ${Number(pedido.montoEfectivo || 0).toLocaleString('es-PY')} + Transf. ₲ ${Number(pedido.montoTransferencia || 0).toLocaleString('es-PY')}${Number(pedido.vuelto) > 0 ? ` · Vuelto ₲ ${Number(pedido.vuelto).toLocaleString('es-PY')}` : ''}`
+                              ? `Cobrado: Efectivo ₲ ${formatGs(pedido.montoEfectivo)} + Transf. ₲ ${formatGs(pedido.montoTransferencia)}${Number(pedido.vuelto) > 0 ? ` · Vuelto ₲ ${formatGs(pedido.vuelto)}` : ''}`
                               : 'Mixto pendiente: falta cobrar la parte en efectivo al entregar')
                             : (pedido.metodoPago === 'transferencia'
                               ? (pedido.pagado ? `Transferencia confirmada${pedido.comprobante ? ` · Comp.: ${pedido.comprobante}` : ''}` : 'Transferencia pendiente de confirmar')
@@ -914,20 +915,20 @@ export default function MyOrdersPage({ user, onNavigate }) {
                     </tr>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Tarifa ecológica</th>
-<td>₲ {Number(selectedOrder.tarifaEcologica || 0).toLocaleString('es-PY')}</td>
+<td>₲ {formatGs(selectedOrder.tarifaEcologica)}</td>
                     </tr>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Método de pago</th>
                       <td>
                         {selectedOrder.metodoPago === 'mixto'
-                          ? `Mixto: Efectivo ₲ ${Number(selectedOrder.montoEfectivo || 0).toLocaleString('es-PY')} + Transferencia ₲ ${Number(selectedOrder.montoTransferencia || 0).toLocaleString('es-PY')}`
+                          ? `Mixto: Efectivo ₲ ${formatGs(selectedOrder.montoEfectivo)} + Transferencia ₲ ${formatGs(selectedOrder.montoTransferencia)}`
                           : (selectedOrder.metodoPago === 'transferencia' ? 'Transferencia' : 'Efectivo')}
                       </td>
                     </tr>
                     {Number(selectedOrder.vuelto) > 0 && (
                       <tr>
                         <th style={{ textAlign: 'left' }}>Vuelto entregado</th>
-                        <td>₲ {Number(selectedOrder.vuelto).toLocaleString('es-PY')}</td>
+                        <td>₲ {formatGs(selectedOrder.vuelto)}</td>
                       </tr>
                     )}
                     {selectedOrder.comprobante && (
@@ -998,14 +999,14 @@ export default function MyOrdersPage({ user, onNavigate }) {
                                 step="500"
                                 value={payDraft.montoRecibido}
                                 onChange={(e) => { setPayDraft((d) => ({ ...d, montoRecibido: e.target.value })); if (payError) setPayError(''); }}
-                                placeholder={`₲ mínimo ${cashTarget.toLocaleString('es-PY')}`}
+                                placeholder={`₲ mínimo ${formatGs(cashTarget)}`}
                                 style={{ background: '#f5f8f4', border: '1px solid #d7e4db', borderRadius: '8px', color: '#173f3b', font: 'inherit', padding: '9px 11px' }}
                               />
                             </label>
                           )}
                           {vuelto > 0 && (
                             <small style={{ color: '#28604f', fontWeight: 700 }}>
-                              Vuelto a entregar al cliente: ₲ {vuelto.toLocaleString('es-PY')}
+                              Vuelto a entregar al cliente: ₲ {formatGs(vuelto)}
                             </small>
                           )}
                         </>

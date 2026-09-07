@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { fetchOrders } from '../services/dashboardService.js';
 import { assignOrder, fetchRepartidores, markOrderPaid } from '../services/adminService.js';
+import { formatGs } from '../lib/format.js';
 
 const estadoLabel = {
   1: 'Pendiente',
@@ -100,7 +101,7 @@ export default function AdminOrders({ user }) {
       if (req.needsMontoRecibido) {
         const recibido = Number(payDraft.montoRecibido);
         if (!(recibido > 0) || recibido < req.cashTarget) {
-          throw new Error(`El efectivo recibido debe ser al menos ₲ ${req.cashTarget.toLocaleString('es-PY')}.`);
+          throw new Error(`El efectivo recibido debe ser al menos ₲ ${formatGs(req.cashTarget)}.`);
         }
         extra.monto_recibido = recibido;
       }
@@ -126,9 +127,9 @@ export default function AdminOrders({ user }) {
   function paymentTitle(order) {
     const partes = [];
     partes.push(order.metodo_pago === 'mixto'
-      ? `Mixto · Eff ₲ ${Number(order.monto_efectivo || 0).toLocaleString('es-PY')} + Transf. ₲ ${Number(order.monto_transferencia || 0).toLocaleString('es-PY')}`
+      ? `Mixto · Eff ₲ ${formatGs(order.monto_efectivo)} + Transf. ₲ ${formatGs(order.monto_transferencia)}`
       : methodLabel(order));
-    if (Number(order.vuelto) > 0) partes.push(`Vuelto ₲ ${Number(order.vuelto).toLocaleString('es-PY')}`);
+    if (Number(order.vuelto) > 0) partes.push(`Vuelto ₲ ${formatGs(order.vuelto)}`);
     if (order.comprobante_transferencia) partes.push(`Comp.: ${order.comprobante_transferencia}`);
     return partes.join(' · ');
   }
@@ -258,7 +259,7 @@ export default function AdminOrders({ user }) {
                 <div className="assign-order__meta">
                   <span>{Number(order.distancia_km || 0).toFixed(1)} km</span>
                   <span>{Number(order.peso_kg || 0)} kg</span>
-                  <span>{(Number(order.tarifa_ecologica) || 0).toLocaleString('es-PY')} ₲</span>
+                  <span>{formatGs(order.tarifa_ecologica)} ₲</span>
                   <span>{Number(order.co2_ahorrado_kg || 0).toFixed(2)} kg CO₂</span>
                   <span
                     className={Number(order.pagado) === 1 ? 'pago-chip pago-chip--pagado' : 'pago-chip pago-chip--pendiente'}
@@ -337,10 +338,10 @@ export default function AdminOrders({ user }) {
           <div className="auth-backdrop" onClick={() => setPayTarget(null)}>
             <div className="account-modal account-modal--pay" onClick={(e) => e.stopPropagation()}>
               <h3>Confirmar pago · Pedido #{payTarget.id_pedido}</h3>
-              <p className="account-modal__sub">Tarifa: ₲ {Number(payTarget.tarifa_ecologica || 0).toLocaleString('es-PY')}
+              <p className="account-modal__sub">Tarifa: ₲ {formatGs(payTarget.tarifa_ecologica)}
                 {payTarget.metodo_pago === 'mixto' && (
                   <>
-                    {' '}· Efectivo ₲ {Number(payTarget.monto_efectivo || 0).toLocaleString('es-PY')} · Transferencia ₲ {Number(payTarget.monto_transferencia || 0).toLocaleString('es-PY')}
+                    {' '}· Efectivo ₲ {formatGs(payTarget.monto_efectivo)} · Transferencia ₲ {formatGs(payTarget.monto_transferencia)}
                   </>
                 )}
               </p>
@@ -372,7 +373,7 @@ export default function AdminOrders({ user }) {
               )}
 
               {vuelto > 0 && (
-                <p className="account-modal__sub account-modal__sub--vuelto">Vuelto a entregar al cliente: ₲ {vuelto.toLocaleString('es-PY')}</p>
+                <p className="account-modal__sub account-modal__sub--vuelto">Vuelto a entregar al cliente: ₲ {formatGs(vuelto)}</p>
               )}
 
               {payError && (
