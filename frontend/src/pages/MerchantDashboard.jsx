@@ -278,8 +278,16 @@ export default function MerchantDashboard({
                     </td>
 
                     <td>
-                    
-₲ {Number(pedido.tarifaEcologica || 0).toLocaleString('es-PY')}
+                      <span
+                        style={{
+                          color: '#173f3b',
+                          fontFamily: 'Space Grotesk, sans-serif',
+                          fontSize: '.78rem',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                      ₲ {Number(pedido.tarifaEcologica || 0).toLocaleString('es-PY')}
                       </span>
 
                     </td>
