@@ -22,6 +22,7 @@ import {
 import { createOrder, getStoredDestinations, saveStoredDestination, removeStoredDestination } from '../services/orderService.js';
 import { fetchClientes } from '../services/clientesService.js';
 import { PARAGUAY_BOUNDS, PARAGUAY_CENTER, inParaguay, boundedNominatim } from '../lib/geografia.js';
+import { toastSuccess, toastError, alertInfo } from '../lib/feedback.js';
 
 const DEFAULT_CO2_FACTOR = 0.180; // kg CO2 por km
 const TARIFA_KM = 2500; // guaraníes por km
@@ -409,27 +410,27 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
   async function handleSubmit() {
     if (!destCoords) {
       setErrors((e) => ({ ...e, direccionDestino: 'Selecciona el destino en el mapa' }));
-      alert('Primero elegí el destino tocando el mapa. Así sabemos a dónde va la entrega.');
+      alertInfo('Elegí el destino en el mapa', 'Así sabemos a dónde va la entrega.');
       return;
     }
     if (!inParaguay(destCoords.lat, destCoords.lng)) {
       setErrors((e) => ({ ...e, direccionDestino: 'EcoRuta solo entrega dentro de Paraguay' }));
-      alert('El destino debe estar dentro de Paraguay. Mové el punto hacia el país.');
+      alertInfo('Destino fuera de Paraguay', 'Mové el punto hacia Paraguay.');
       return;
     }
     if (!estimated) {
-      alert('Un momentito: dejá que calculemos la distancia y la tarifa antes de confirmar.');
+      alertInfo('Un momentito', 'Dejá que calculemos la distancia y la tarifa antes de confirmar.');
       return;
     }
     if (!form.detallePaquete.trim() || !form.pesoKg || Number(form.pesoKg) <= 0 || Number(form.pesoKg) > 50) {
-      alert('Faltan datos del paquete: describí el contenido y poné un peso entre 0.1 y 50 kg.');
+      alertInfo('Faltan datos del paquete', 'Describí el contenido y poné un peso entre 0.1 y 50 kg.');
       return;
     }
 
     const e = validate();
     if (Object.keys(e).length > 0) {
       setErrors(e);
-      alert('Revisemos los campos marcados en rojo y volvé a intentar.');
+      alertInfo('Revisá los campos marcados en rojo', 'Faltan completar algunos datos del pedido.');
       return;
     }
 
@@ -476,10 +477,9 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
       });
       setSavedDestinations(getStoredDestinations());
 
-      alert('¡Entrega registrada! Ya quedó a la vista del equipo para asignarle repartidor.');
-      onBack();
+      await toastSuccess('¡Entrega registrada!', 'Ya quedó a la vista del equipo para asignarle repartidor.').then(() => onBack());
     } catch (error) {
-      alert(error.message || 'Tuvimos un problema al registrar la entrega. Volvé a intentarlo.');
+      await toastError('No pudimos registrar la entrega', error.message || 'Volvé a intentarlo.');
     }
   }
 

@@ -22,6 +22,7 @@ import {
   updateCliente
 } from '../services/clientesService.js';
 import { PARAGUAY_BOUNDS, PARAGUAY_CENTER, inParaguay, boundedNominatim } from '../lib/geografia.js';
+import { confirmAction, toastSuccess, toastError } from '../lib/feedback.js';
 
 const MARKER = L.divIcon({
   className: 'cliente-marker',
@@ -201,7 +202,12 @@ export default function ClientesPage({ user }) {
   }
 
   async function handleDelete(cliente) {
-    if (!window.confirm(`¿Eliminar a ${cliente.nombre}? Los pedidos asignados conservarán la dirección.`)) return;
+    const confirmed = await confirmAction(
+      '¿Eliminar a ' + (cliente.nombre || 'este cliente') + '?',
+      'Los pedidos asignados conservarán la dirección.',
+      'Sí, eliminar'
+    );
+    if (!confirmed) return;
     setBackendError('');
     try {
       await deleteCliente(cliente.id_cliente);
