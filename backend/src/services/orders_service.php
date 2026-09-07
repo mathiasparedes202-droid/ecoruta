@@ -504,7 +504,7 @@ function updateOrder(int $orderId, object $claims, array $body): array
             'alto' => $alto,
             'ancho' => $ancho,
             'largo' => $largo,
-            'fee' => round($fee, 2),
+            'fee' => round($fee),
             'dlat' => $destLat,
             'dlng' => $destLng,
         ];
@@ -566,7 +566,7 @@ function updateOrder(int $orderId, object $claims, array $body): array
             : 'Pedido actualizado con la tarifa recalculada.',
         'id_pedido' => $orderId,
         'id_estado' => $relanzar ? 1 : $estadoActual,
-        'tarifa_ecologica' => round($fee, 2),
+        'tarifa_ecologica' => round($fee),
     ];
 }
 
@@ -787,7 +787,7 @@ function updateOrderPayment(int $orderId, object $claims, array $body): array
                     $faltante = number_format($montoEfectivo - $montoRecibido, 0, ',', '.');
                     sendJson(['message' => "El efectivo recibido es menor a lo que corresponde; faltan ₲ {$faltante}"], 422);
                 }
-                $vuelto = round($montoRecibido - $montoEfectivo, 2);
+                $vuelto = round($montoRecibido - $montoEfectivo);
                 $updates[] = 'monto_recibido = :monto_recibido';
                 $updates[] = 'vuelto = :vuelto';
                 $params['monto_recibido'] = $montoRecibido;
