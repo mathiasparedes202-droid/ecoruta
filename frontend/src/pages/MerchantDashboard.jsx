@@ -124,12 +124,12 @@ export default function MerchantDashboard({
     },
     {
       label: 'Total Invertido',
-value: `${myPedidos
+      value: `₲ ${myPedidos
         .reduce(
           (s, p) => s + Number(p.tarifaEcologica || 0),
           0
         )
-        .toLocaleString('es-PY')} guaraníes`,
+        .toLocaleString('es-PY')}`,
       sub: 'En entregas eco.'
     },
     {
@@ -279,22 +279,8 @@ value: `${myPedidos
 
                     <td>
                     
-                    <span
-                      style={{
-                        color: '#173f3b',
-                        fontFamily: 'Space Grotesk, sans-serif',
-                        fontSize: '.78rem',
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      Gs.{" "}
-                      {Number(pedido.tarifaEcologica).toLocaleString('es-PY', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}
-                    </span>
-
+₲ {Number(pedido.tarifaEcologica || 0).toLocaleString('es-PY')}
+                      </span>
 
                     </td>
 

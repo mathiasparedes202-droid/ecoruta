@@ -639,10 +639,7 @@ export default function MyOrdersPage({ user, onNavigate }) {
                           whiteSpace: 'nowrap'
                         }}
                       >
-                        $
-                        {Number(
-                          pedido.tarifaEcologica
-                        ).toFixed()}
+₲ {Number(pedido.tarifaEcologica || 0).toLocaleString('es-PY')}
                       </span>
 
                     </td>
@@ -917,7 +914,7 @@ export default function MyOrdersPage({ user, onNavigate }) {
                     </tr>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Tarifa ecológica</th>
-                      <td>${Number(selectedOrder.tarifaEcologica || 0).toFixed()}</td>
+<td>₲ {Number(selectedOrder.tarifaEcologica || 0).toLocaleString('es-PY')}</td>
                     </tr>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Método de pago</th>

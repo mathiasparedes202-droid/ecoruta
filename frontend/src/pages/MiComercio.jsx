@@ -46,7 +46,7 @@ export default function CommercePage({ user }) {
     ['RUC', user?.ruc],
     ['Dirección de Origen (retiro)', user?.direccion_comercio || user?.direccion_origen],
     ['Ciudad', user?.ciudad],
-    ['Tarifa Base', user?.tarifa_base ? `${user.tarifa_base} ₲` : ''],
+    ['Tarifa Base', user?.tarifa_base ? `₲ ${Number(user.tarifa_base).toLocaleString('es-PY')}` : ''],
     ['Latitud', hasCoords ? lat.toFixed(6) : ''],
     ['Longitud', hasCoords ? lng.toFixed(6) : '']
   ];
