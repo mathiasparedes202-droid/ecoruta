@@ -30,11 +30,11 @@ function calcularTarifaEcologica(float $tarifaBase, float $distanceKm, float $we
         $fee += $weightKg * TARIFA_KG;
     }
     if ($altoCm > 0 && $anchoCm > 0 && $largoCm > 0) {
-        $volumenDm3 = ($altoCm * $anchoCm * $largoCm) / 1000.0;
+        $volumenDm3 = ($altoCm * $anchoCm * $largoCm) / 1000;
         $fee += $volumenDm3 * TARIFA_DM3;
     }
 
-    return round($fee, 2);
+    return round($fee);
 }
 
 /**
