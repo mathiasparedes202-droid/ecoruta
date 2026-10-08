@@ -96,11 +96,13 @@ function getMetrics(mixed $desdeRaw = null, mixed $hastaRaw = null): array
         'SELECT DATE(CASE WHEN id_estado = 4 THEN fecha_entrega ELSE fecha_solicitud END) AS dia,
                 id_estado, COUNT(*) AS c
          FROM pedidos
-         WHERE (id_estado = 4 AND DATE(fecha_entrega) BETWEEN :desde AND :hasta)
-            OR (id_estado <> 4 AND DATE(fecha_solicitud) BETWEEN :desde AND :hasta)
+         WHERE (id_estado = 4 AND DATE(fecha_entrega) BETWEEN :desde1 AND :hasta1)
+            OR (id_estado <> 4 AND DATE(fecha_solicitud) BETWEEN :desde2 AND :hasta2)
          GROUP BY dia, id_estado'
     );
-    $estadosStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    // Nota: con EMULATE_PREPARES desactivado, MySQL nativo no permite
+    // reutilizar el mismo placeholder dos veces (error HY093).
+    $estadosStmt->execute([':desde1' => $desde, ':hasta1' => $hasta, ':desde2' => $desde, ':hasta2' => $hasta]);
     $estados = $estadosStmt->fetchAll();
 
     $byDay = [];
