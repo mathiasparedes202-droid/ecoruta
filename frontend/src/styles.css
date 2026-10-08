@@ -325,6 +325,19 @@ nav a { color: #526963; font-weight: 600; }
 .date-filter { align-items: center; background: #fffefa; border: 1px solid #dce7df; border-radius: 9px; color: #526963; display: inline-flex; font-size: .78rem; font-weight: 700; gap: 7px; min-height: 42px; padding: 6px 10px; }
 .date-filter input { background: transparent; border: 0; color: #173f3b; font: inherit; min-height: 28px; outline: none; padding: 2px; }
 .date-filter:focus-within { border-color: #77aa91; box-shadow: 0 0 0 3px rgba(119,170,145,.16); }
+/* Filtro por fechas del panel del administrador. */
+.admin-filters { background: #f4f9f3; border: 1px solid #dce9df; border-radius: 14px; display: grid; gap: 10px; margin: 0 0 24px; padding: 14px 16px; }
+.admin-filters__row { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.admin-filters__apply { background: #1d5b50; border: 0; border-radius: 9px; color: #fff; cursor: pointer; font: inherit; font-size: .8rem; font-weight: 700; min-height: 42px; padding: 0 18px; }
+.admin-filters__apply:hover:not(:disabled) { background: #174c43; }
+.admin-filters__apply:disabled { cursor: wait; opacity: .65; }
+.admin-filters__clear { background: #fffefa; border: 1px solid #d5e2d7; border-radius: 9px; color: #28604f; cursor: pointer; font: inherit; font-size: .8rem; font-weight: 700; min-height: 42px; padding: 0 16px; }
+.admin-filters__clear:hover:not(:disabled) { border-color: #77aa91; }
+.admin-filters__presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-filters__presets button { background: #fffefa; border: 1px solid #dce7df; border-radius: 999px; color: #395f54; cursor: pointer; font-size: .74rem; font-weight: 700; padding: 7px 13px; }
+.admin-filters__presets button:hover:not(:disabled) { border-color: #77aa91; color: #173f3b; }
+.admin-filters__range { color: #64716b; font-size: .74rem; font-weight: 600; }
+.admin-kpis--loading { opacity: .6; pointer-events: none; }
 .module-grid { margin-top: 22px; }
 .module-card { box-shadow: 0 8px 20px rgba(31,67,56,.04); }
 .admin-users { background: #fffefa; border: 1px solid #dce7df; border-radius: 18px; box-shadow: 0 6px 18px rgba(31,67,56,.04); margin-bottom: 18px; padding: 26px; }

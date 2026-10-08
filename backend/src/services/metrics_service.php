@@ -5,38 +5,103 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 
 const METRICS_DAYS = 6; // 6 días hacia atrás + hoy = ventana de 7 días
+const METRICS_MAX_RANGE_DAYS = 93; // Tope del filtro por fechas (evita consultas gigantes)
 
 /**
- * Métricas del panel de administración: devuelve la actividad diaria de los
- * últimos 7 días y un resumen que combina la fotografía actual del sistema
- * (pedidos en curso, plata por cobrar), la recaudación por método de pago y
- * el desempeño de los repartidores en el período.
+ * Valida una fecha YYYY-MM-DD. Devuelve la fecha normalizada o null.
  */
-function getMetrics(): array
+function parseMetricsDate(mixed $value): ?string
+{
+    if (!is_string($value)) {
+        return null;
+    }
+    $value = trim($value);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        return null;
+    }
+    [$y, $m, $d] = array_map('intval', explode('-', $value));
+    if (!checkdate($m, $d, $y)) {
+        return null;
+    }
+    return sprintf('%04d-%02d-%02d', $y, $m, $d);
+}
+
+/**
+ * Resuelve el rango [desde, hasta] a partir de los query params.
+ * Sin params: últimos 7 días (comportamiento histórico).
+ */
+function metricsDateRange(mixed $desdeRaw = null, mixed $hastaRaw = null, ?string $todayOverride = null): array
+{
+    $desde = parseMetricsDate($desdeRaw);
+    $hasta = parseMetricsDate($hastaRaw);
+    $today = $todayOverride ?? date('Y-m-d');
+
+    if ($desde === null && $hasta === null) {
+        $desde = date('Y-m-d', strtotime('-' . METRICS_DAYS . ' days'));
+        $hasta = $today;
+    } elseif ($desde !== null && $hasta === null) {
+        $hasta = $today;
+        if ($hasta < $desde) {
+            $hasta = $desde;
+        }
+    } elseif ($desde === null && $hasta !== null) {
+        $desde = date('Y-m-d', strtotime($hasta . ' -' . METRICS_DAYS . ' days'));
+    } elseif ($desde > $hasta) {
+        [$desde, $hasta] = [$hasta, $desde];
+    }
+
+    // Tope de seguridad: si el rango es muy amplio, se recorta desde el final.
+    $diff = (strtotime($hasta) - strtotime($desde)) / 86400;
+    if ($diff >= METRICS_MAX_RANGE_DAYS) {
+        $desde = date('Y-m-d', strtotime($hasta . ' -' . (METRICS_MAX_RANGE_DAYS - 1) . ' days'));
+    }
+
+    return [$desde, $hasta];
+}
+
+/**
+ * Métricas del panel de administración: devuelve la actividad diaria del
+ * rango solicitado (por defecto últimos 7 días) y un resumen que combina la
+ * fotografía actual del sistema (pedidos en curso, plata por cobrar), la
+ * recaudación por método de pago y el desempeño de los repartidores.
+ */
+function getMetrics(mixed $desdeRaw = null, mixed $hastaRaw = null): array
 {
     $db = database();
+    // Usar la fecha del servidor de BD como "hoy" para que el rango por
+    // defecto coincida con CURDATE() aunque PHP y MySQL difieran en zona horaria.
+    try {
+        $todayRow = $db->query('SELECT CURDATE() AS hoy')->fetch();
+        $dbToday = is_array($todayRow) && isset($todayRow['hoy']) ? parseMetricsDate($todayRow['hoy']) : null;
+    } catch (Throwable) {
+        $dbToday = null;
+    }
+    [$desde, $hasta] = metricsDateRange($desdeRaw, $hastaRaw, $dbToday);
 
-    // Histórico persistido en métricas diarias (si existe)
-    $statement = $db->query(
+    // Histórico persistido en métricas diarias (si existe), acotado al rango.
+    $storedStmt = $db->prepare(
         'SELECT fecha_reporte, total_pedidos, entregados, co2_total_ahorrado_kg, km_recorridos_sin_emision
-         FROM metricas_diarias ORDER BY fecha_reporte DESC LIMIT 30'
+         FROM metricas_diarias WHERE fecha_reporte BETWEEN :desde AND :hasta ORDER BY fecha_reporte DESC'
     );
+    $storedStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
     $stored = [];
-    foreach ($statement->fetchAll() as $row) {
+    foreach ($storedStmt->fetchAll() as $row) {
         $stored[$row['fecha_reporte']] = $row;
     }
 
-    // Estado de los pedidos por día (últimos 7 días incluida hoy).
+    // Estado de los pedidos por día dentro del rango.
     // Un pedido entregado cuenta en el día de su ENTREGA; el resto, en el día de solicitud.
     // Así la fila del día queda coherente: total_pedidos >= entregados y el cumplimiento tiene sentido.
-    $estados = $db->query(
+    $estadosStmt = $db->prepare(
         'SELECT DATE(CASE WHEN id_estado = 4 THEN fecha_entrega ELSE fecha_solicitud END) AS dia,
                 id_estado, COUNT(*) AS c
          FROM pedidos
-         WHERE (id_estado = 4 AND fecha_entrega >= DATE_SUB(CURDATE(), INTERVAL ' . METRICS_DAYS . ' DAY))
-            OR (id_estado <> 4 AND fecha_solicitud >= DATE_SUB(CURDATE(), INTERVAL ' . METRICS_DAYS . ' DAY))
+         WHERE (id_estado = 4 AND DATE(fecha_entrega) BETWEEN :desde AND :hasta)
+            OR (id_estado <> 4 AND DATE(fecha_solicitud) BETWEEN :desde AND :hasta)
          GROUP BY dia, id_estado'
-    )->fetchAll();
+    );
+    $estadosStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    $estados = $estadosStmt->fetchAll();
 
     $byDay = [];
     foreach ($estados as $row) {
@@ -55,7 +120,7 @@ function getMetrics(): array
 
     // Impacto de los entregados (según fecha de entrega): co2, km, ingresos,
     // cuánto se cobró y cuánto queda pendiente, más el tiempo promedio de entrega.
-    $entregados = $db->query(
+    $entregadosStmt = $db->prepare(
         'SELECT DATE(fecha_entrega) AS dia,
                 COUNT(*) AS entregados,
                 COALESCE(SUM(co2_ahorrado_kg), 0) AS co2_ahorrado_kg,
@@ -67,9 +132,11 @@ function getMetrics(): array
                 COALESCE(ROUND(AVG(TIMESTAMPDIFF(MINUTE, fecha_solicitud, fecha_entrega)), 1), 0) AS tiempo_promedio_entrega_min
          FROM pedidos
          WHERE id_estado = 4 AND fecha_entrega IS NOT NULL
-           AND fecha_entrega >= DATE_SUB(CURDATE(), INTERVAL ' . METRICS_DAYS . ' DAY)
+           AND DATE(fecha_entrega) BETWEEN :desde AND :hasta
          GROUP BY DATE(fecha_entrega)'
-    )->fetchAll();
+    );
+    $entregadosStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    $entregados = $entregadosStmt->fetchAll();
 
     foreach ($entregados as $row) {
         $dia = $row['dia'];
@@ -86,9 +153,10 @@ function getMetrics(): array
         $byDay[$dia]['tiempo_promedio_entrega_min'] = (float) $row['tiempo_promedio_entrega_min'];
     }
 
-    // Normalizar filas: la actividad viva de la ventana manda; lo persistido en
+    // Normalizar filas: la actividad viva del rango manda; lo persistido en
     // metricas_diarias (si existe, por ejemplo cargas históricas) solo completa
-    // días anteriores que ya no tienen movimiento en vivo.
+    // días sin movimiento en vivo. Se rellena cada día del rango con ceros
+    // para que el filtro por fechas muestre días sin actividad.
     $merged = [];
     foreach ($byDay as $dia => $liveRow) {
         $merged[$dia] = finalizeMetricRow($liveRow, $liveRow, false);
@@ -99,13 +167,23 @@ function getMetrics(): array
         }
     }
 
+    $cursor = $desde;
+    while ($cursor <= $hasta) {
+        if (!isset($merged[$cursor])) {
+            $empty = emptyDayRow($cursor);
+            $merged[$cursor] = finalizeMetricRow($empty, $empty, false);
+        }
+        $cursor = date('Y-m-d', strtotime($cursor . ' +1 day'));
+    }
+
     uksort($merged, static fn (string $a, string $b): int => strcmp($b, $a));
 
-    $diario = array_values(array_slice($merged, 0, 30));
+    $diario = array_values($merged);
 
     return [
         'diario' => $diario,
-        'resumen' => buildResumen($diario),
+        'resumen' => buildResumen($diario, $desde, $hasta),
+        'rango' => ['desde' => $desde, 'hasta' => $hasta],
     ];
 }
 
@@ -167,10 +245,10 @@ function finalizeMetricRow(array $row, array $live, bool $fromStored): array
 }
 
 /**
- * Resumen consolidado del panel: totales de la ventana, fotografía actual de
+ * Resumen consolidado del panel: totales del rango, fotografía actual de
  * estados y cobros, recaudación por método de pago y ranking de repartidores.
  */
-function buildResumen(array $diario): array
+function buildResumen(array $diario, string $desde, string $hasta): array
 {
     $sum = static function (string $key) use ($diario): float {
         $acc = 0.0;
@@ -192,16 +270,18 @@ function buildResumen(array $diario): array
          FROM pedidos"
     )->fetch();
 
-    // Tiempo promedio general de la ventana (entregas de los últimos 7 días)
-    $tiempo = $db->query(
+    // Tiempo promedio general del rango filtrado.
+    $tiempoStmt = $db->prepare(
         'SELECT COALESCE(ROUND(AVG(TIMESTAMPDIFF(MINUTE, fecha_solicitud, fecha_entrega)), 0), 0) AS min
          FROM pedidos
          WHERE id_estado = 4 AND fecha_entrega IS NOT NULL
-           AND fecha_entrega >= DATE_SUB(CURDATE(), INTERVAL ' . METRICS_DAYS . ' DAY)'
-    )->fetch();
+           AND DATE(fecha_entrega) BETWEEN :desde AND :hasta'
+    );
+    $tiempoStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    $tiempo = $tiempoStmt->fetch();
 
-    // Recaudación según el método de pago (entregas de la ventana)
-    $porPago = $db->query(
+    // Recaudación según el método de pago (entregas del rango).
+    $porPagoStmt = $db->prepare(
         "SELECT CASE
                     WHEN metodo_pago = 'transferencia' THEN 'transferencia'
                     WHEN metodo_pago = 'mixto' THEN 'mixto'
@@ -211,9 +291,11 @@ function buildResumen(array $diario): array
                 COUNT(*) AS entregas,
                 COALESCE(SUM(tarifa_ecologica), 0) AS monto
          FROM pedidos
-         WHERE id_estado = 4 AND fecha_entrega >= DATE_SUB(CURDATE(), INTERVAL ' . METRICS_DAYS . ' DAY)
+         WHERE id_estado = 4 AND DATE(fecha_entrega) BETWEEN :desde AND :hasta
          GROUP BY metodo"
-    )->fetchAll();
+    );
+    $porPagoStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    $porPago = $porPagoStmt->fetchAll();
 
     $resultadoPago = [];
     foreach (['efectivo', 'transferencia', 'mixto', 'sin_especificar'] as $metodo) {
@@ -227,8 +309,8 @@ function buildResumen(array $diario): array
         ];
     }
 
-    // Ranking: los repartidores con más entregas en la ventana
-    $ranking = $db->query(
+    // Ranking: los repartidores con más entregas en el rango.
+    $rankingStmt = $db->prepare(
         'SELECT u.nombre_completo,
                 COUNT(p.id_pedido) AS entregas,
                 COALESCE(SUM(p.distancia_km), 0) AS km,
@@ -236,11 +318,13 @@ function buildResumen(array $diario): array
          FROM pedidos p
          JOIN repartidores r ON r.id_repartidor = p.id_repartidor
          JOIN usuarios u ON u.id_usuario = r.id_usuario
-         WHERE p.id_estado = 4 AND p.fecha_entrega >= DATE_SUB(CURDATE(), INTERVAL ' . METRICS_DAYS . ' DAY)
+         WHERE p.id_estado = 4 AND DATE(p.fecha_entrega) BETWEEN :desde AND :hasta
          GROUP BY r.id_repartidor, u.nombre_completo
          ORDER BY entregas DESC, km DESC
          LIMIT 5'
-    )->fetchAll();
+    );
+    $rankingStmt->execute([':desde' => $desde, ':hasta' => $hasta]);
+    $ranking = $rankingStmt->fetchAll();
 
     $rankingFinal = [];
     foreach ($ranking as $index => $row) {
@@ -257,6 +341,8 @@ function buildResumen(array $diario): array
     $entregados = $sum('entregados');
 
     return [
+        'desde' => $desde,
+        'hasta' => $hasta,
         'total_pedidos' => (int) $total,
         'entregados' => (int) $entregados,
         'cancelados' => (int) $sum('cancelados'),

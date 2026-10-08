@@ -14,6 +14,10 @@ export function fetchOrders() {
   return request('/api/orders');
 }
 
-export function fetchMetrics() {
-  return request('/api/metrics');
+export function fetchMetrics(desde, hasta) {
+  const params = new URLSearchParams();
+  if (desde) params.set('desde', desde);
+  if (hasta) params.set('hasta', hasta);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return request(`/api/metrics${query}`);
 }
