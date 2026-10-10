@@ -18,6 +18,13 @@ export function localPool() {
   return pool;
 }
 
+// Lee un pedido local completo para encolarlo al outbox.
+export async function fetchLocalPedido(idPedido) {
+  const db = localPool();
+  const [[pedido]] = await db.query('SELECT * FROM pedidos WHERE id_pedido = ? LIMIT 1', [idPedido]);
+  return pedido || null;
+}
+
 // Lee una venta local completa (cabecera + detalles) para encolarla al outbox.
 export async function fetchLocalVenta(idVenta) {
   const db = localPool();

@@ -1,24 +1,9 @@
 <?php
 /**
- * Migración 44 — Soporte de sincronización offline (intermediario PC).
+ * Migración 44 — Soporte de sincronización offline, módulo TIENDA (Floracia).
  *
- * Qué hace (idempotente, seguro correr en LOCAL y en WEB):
- *  1) venta.sync_uuid CHAR(36) UNIQUE  -> clave de idempotencia. Cada venta creada
- *     (local o web) lleva un UUID v4. Si el sync reintenta el push, la web detecta
- *     el uuid y NO duplica la factura.
- *  2) venta.origen ENUM('local','web')  -> saber dónde nació la venta.
- *  3) venta.updated_at TIMESTAMP        -> para el pull incremental (?since=).
- *  4) UNIQUE(numero_factura)            -> segunda barrera anti-duplicado a nivel DB.
- *     Si dos ventas distintas chocan en número, MySQL rechaza y el SyncController
- *     reasigna el siguiente folio disponible.
- *  5) Triggers anti-stock-negativo      -> aunque el PHP valide, el trigger es la
- *     última defensa: impide que insumo.stock o stock_producto.cantidad bajen de 0,
- *     tanto en local como en web, durante y después del sync.
- *
- * Uso:
- *   php backend/database/migrations/44_add_sync_idempotency.php   (desde raíz backend)
- * O vía navegador (solo admin local):
- *   http://localhost:8000/migrate.php  (si tu migrate.php corre todas)
+ * Solo actúa si existen las tablas venta/insumo/stock_producto; si la base
+ * es la de delivery (ecoruta_db) no toca nada. Para delivery ver migración 45.
  */
 require_once __DIR__ . '/../../vendor/autoload.php';
 
@@ -60,7 +45,22 @@ function triggerExists(PDO $db, string $name): bool
     return (bool)$st->fetchColumn();
 }
 
-echo "== Migración 44: sync idempotencia + anti-negativo ==\n";
+function tableExists44(PDO $db, string $table): bool
+{
+    $st = $db->prepare(
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t"
+    );
+    $st->execute(['t' => $table]);
+    return (bool)$st->fetchColumn();
+}
+
+echo "== Migración 44: sync tienda (solo si existen venta/insumo) ==\n";
+
+if (!tableExists44($db, 'venta')) {
+    echo "-- Sin tabla venta en esta base: nada que hacer (ver migración 45 para delivery).\n";
+    echo "== Migración 44 completa (sin cambios). ==\n";
+    exit(0);
+}
 
 // 1) sync_uuid
 if (!colExists($db, 'venta', 'sync_uuid')) {
@@ -120,7 +120,9 @@ if (colExists($db, 'stock_producto', 'fecha_actualizacion')) {
 
 // 5) Triggers anti-negativo -------------------------------------------------
 // insumo.stock
-if (!triggerExists($db, 'trg_insumo_no_negativo')) {
+if (!tableExists44($db, 'insumo')) {
+    echo "-- Sin tabla insumo: se omite trigger anti-negativo.\n";
+} elseif (!triggerExists($db, 'trg_insumo_no_negativo')) {
     $db->exec("DROP TRIGGER IF EXISTS trg_insumo_no_negativo");
     $db->exec("
         CREATE TRIGGER trg_insumo_no_negativo BEFORE UPDATE ON insumo

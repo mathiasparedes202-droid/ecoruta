@@ -33,7 +33,7 @@
     <h3>Estado</h3>
     <div id="status">Cargando…</div>
     <p style="color:#94a3b8;font-size:13px">El frontend debe apuntar a <code>http://localhost:18650</code>.
-    Cuando la web cae, el agente guarda en local y encola; al volver internet sube la cola sin duplicar facturas y sin dejar stock negativo.</p>
+    Cuando la web cae, el agente guarda en local y encola; al volver internet sube la cola sin duplicar pedidos ni revertir pagos.</p>
   </div>
   <div class="grid2">
     <div class="card"><h3>Cola pendiente (<span id="pendingN">0</span>)</h3><div id="outbox">…</div></div>
@@ -61,7 +61,7 @@ async function load(){
   document.getElementById('confN').textContent=cf.items.length;
   document.getElementById('conflicts').innerHTML=cf.items.length?('<table><tr><th>Tipo</th><th>Detalle</th><th></th></tr>'+
     cf.items.map(c=>`<tr><td>${c.kind}</td><td>${c.sync_uuid||''}<br><small>${(c.message||'').slice(0,140)}</small></td><td><button onclick="resolve('${c.sync_uuid}')">Revisado</button></td></tr>`).join('')+'</table>')
-    :'Sin conflictos. El stock nunca quedó negativo y no hay facturas duplicadas.';
+    :'Sin conflictos. Ningún pedido se duplicó y ningún pago se revirtió.';
   const lg=await j('/agent/log');
   document.getElementById('log').textContent=(lg.lines||[]).join('\n');
 }

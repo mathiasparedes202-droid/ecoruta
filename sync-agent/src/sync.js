@@ -13,19 +13,23 @@ export async function refreshHealth() {
   return s;
 }
 
-// PUSH: sube ventas locales pendientes a la web (idempotente).
-// La web responde por item: applied | duplicado | conflicto_folio_reasignado | conflicto_stock | error
+// PUSH: sube pedidos/ventas locales pendientes a la web (idempotente).
+// La web responde por item: applied | duplicado | conflicto_pago |
+// conflicto_folio_reasignado | conflicto_stock | error
 export async function runPush() {
   const s = loadState();
   if (!s.webReachable) return { skipped: 'web no alcanzable' };
-  const items = loadOutbox().filter((x) => x.status === 'pending' && x.type === 'venta');
+  const items = loadOutbox().filter(
+    (x) => x.status === 'pending' && (x.type === 'pedido' || x.type === 'venta')
+  );
   if (!items.length) return { pushed: 0 };
 
-  const ventas = items.map((x) => x.snapshot);
-  log(`[push] subiendo ${ventas.length} venta(s) a la web...`);
+  const pedidos = items.filter((x) => x.type === 'pedido').map((x) => x.snapshot);
+  const ventas = items.filter((x) => x.type === 'venta').map((x) => x.snapshot);
+  log(`[push] subiendo ${pedidos.length} pedido(s) + ${ventas.length} venta(s) a la web...`);
   let resp;
   try {
-    resp = await webPush(ventas);
+    resp = await webPush({ pedidos, ventas });
   } catch (e) {
     log(`[push] fallo de red: ${e.message}`);
     return { error: e.message };
@@ -40,13 +44,13 @@ export async function runPush() {
   for (const r of resp.results || []) {
     const op = byUuid.get(r.sync_uuid);
     if (!op) continue;
+    const ref = r.id_pedido ? `pedido #${r.id_pedido}` : `folio ${r.numero_factura || '?'}`;
     if (r.status === 'applied' || r.status === 'duplicado') {
       removeOp(op.id);
       applied++;
-      log(`[push] ${r.sync_uuid} -> ${r.status} (folio ${r.numero_factura})`);
+      log(`[push] ${r.sync_uuid} -> ${r.status} (${ref})`);
     } else if (r.status === 'conflicto_folio_reasignado') {
-      // No se duplicó: la web le dio folio nuevo. Se corrige el local vía SQL directo
-      // en el próximo pull (la venta web baja con el folio nuevo) y se saca de la cola.
+      // Solo ventas: la web le dio folio nuevo, se corrige el local.
       removeOp(op.id);
       applied++;
       pushConflict({ at: new Date().toISOString(), kind: 'folio_reasignado', sync_uuid: r.sync_uuid, message: r.message });
@@ -57,11 +61,11 @@ export async function runPush() {
       } catch (e) {
         log(`[push] no se pudo corregir folio local: ${e.message}`);
       }
-    } else if (r.status === 'conflicto_stock') {
+    } else if (r.status === 'conflicto_stock' || r.status === 'conflicto_pago') {
       // NO se reintenta a ciegas: queda en conflicto para revisión manual.
       updateOp(op.id, { status: 'conflict', attempts: op.attempts + 1, last_error: r.message });
-      pushConflict({ at: new Date().toISOString(), kind: 'stock', sync_uuid: r.sync_uuid, message: r.message });
-      log(`[push] CONFLICTO STOCK ${r.sync_uuid}: ${r.message}`);
+      pushConflict({ at: new Date().toISOString(), kind: r.status === 'conflicto_pago' ? 'pago' : 'stock', sync_uuid: r.sync_uuid, message: r.message });
+      log(`[push] CONFLICTO ${r.status} ${r.sync_uuid}: ${r.message}`);
     } else {
       updateOp(op.id, { attempts: op.attempts + 1, last_error: r.message });
       log(`[push] error ${r.sync_uuid}: ${r.message}`);
@@ -72,7 +76,7 @@ export async function runPush() {
   return { pushed: applied, total: items.length };
 }
 
-// PULL: baja ventas nuevas de la web al local (mismo endpoint idempotente del lado local).
+// PULL: baja pedidos/ventas nuevos de la web al local (mismo endpoint idempotente del lado local).
 export async function runPull() {
   const s = loadState();
   if (!s.webReachable) return { skipped: 'web no alcanzable' };
@@ -85,9 +89,10 @@ export async function runPull() {
   }
   if (!resp?.success) return { error: resp?.message || 'pull rechazado' };
 
+  const pedidos = resp.data?.pedidos || [];
   const ventas = resp.data?.ventas || [];
-  if (ventas.length) {
-    // Reconstruir payload con detalles para el push local
+  if (pedidos.length || ventas.length) {
+    // Reconstruir payload de ventas con detalles para el push local
     const byId = new Map(ventas.map((v) => [v.id_venta, v]));
     const dets = resp.data?.detalles || [];
     const grouped = new Map();
@@ -95,10 +100,13 @@ export async function runPull() {
       if (!grouped.has(d.id_venta)) grouped.set(d.id_venta, []);
       grouped.get(d.id_venta).push(d);
     }
-    const payload = [...byId.values()].map((v) => ({ ...v, detalles: grouped.get(v.id_venta) || [] }));
+    const payload = {
+      pedidos,
+      ventas: [...byId.values()].map((v) => ({ ...v, detalles: grouped.get(v.id_venta) || [] })),
+    };
     try {
       const r = await localPush(payload);
-      log(`[pull] ${ventas.length} venta(s) web -> local: ${JSON.stringify((r.results || []).map((x) => x.status))}`);
+      log(`[pull] ${pedidos.length} pedido(s) + ${ventas.length} venta(s) web -> local: ${JSON.stringify((r.results || []).map((x) => x.status))}`);
     } catch (e) {
       log(`[pull] no se pudo aplicar en local: ${e.message}`);
       return { error: e.message };
@@ -106,9 +114,9 @@ export async function runPull() {
   }
   s.lastPullAt = new Date().toISOString();
   if (resp.max_ts) s.lastPullTs = resp.max_ts;
-  if (resp.server_time && !ventas.length) s.lastPullTs = resp.server_time;
+  if (resp.server_time && !pedidos.length && !ventas.length) s.lastPullTs = resp.server_time;
   saveState(s);
-  return { pulled: ventas.length };
+  return { pulled: pedidos.length + ventas.length };
 }
 
 export async function runCycle() {

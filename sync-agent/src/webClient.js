@@ -50,13 +50,13 @@ export async function forward(base, req, extraHeaders = {}) {
   return { status: r.status, json, text, contentType: r.headers.get('content-type') || '' };
 }
 
-export async function webPush(ventas) {
+export async function webPush({ pedidos = [], ventas = [] }) {
   const r = await fetchTimeout(
     `${config.webBase}/api/sync/push`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sync-key': config.webSyncKey },
-      body: JSON.stringify({ ventas }),
+      body: JSON.stringify({ pedidos, ventas }),
     },
     60000
   );
@@ -72,14 +72,14 @@ export async function webPull(since, limit = 200) {
 }
 
 // Aplica en LOCAL lo que vino de la web usando el MISMO endpoint idempotente.
-// Así la lógica anti-duplicado/anti-negativo vive en un solo lugar (PHP).
-export async function localPush(ventas) {
+// Así la lógica anti-duplicado vive en un solo lugar (PHP).
+export async function localPush({ pedidos = [], ventas = [] }) {
   const r = await fetchTimeout(
     `${config.localBase}/api/sync/push`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sync-key': config.localSyncKey },
-      body: JSON.stringify({ ventas }),
+      body: JSON.stringify({ pedidos, ventas }),
     },
     60000
   );

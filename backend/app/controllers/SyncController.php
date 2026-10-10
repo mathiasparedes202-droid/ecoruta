@@ -17,7 +17,12 @@ use PDO;
  *  GET  /api/sync/pull?since=... -> incremental web->local / local->web
  *  POST /api/sync/push            -> lote idempotente local->web (anti-duplicado + anti-negativo)
  *
- * Garantías:
+ * Garantías delivery (pedidos):
+ *  - Idempotencia por pedidos.sync_uuid: reintentos del agente NO duplican
+ *    pedidos ni cobran dos veces.
+ *  - Regla de dinero: jamás revierte pagado=1 a 0.
+ *
+ * Garantías tienda (ventas, cuando la base las tiene):
  *  - Idempotencia por venta.sync_uuid: reintentos del agente NO duplican facturas.
  *  - Folio único: si numero_factura choca con otra venta (distinto uuid),
  *    se reasigna el siguiente folio libre y se devuelve para corregir el local.
@@ -61,11 +66,15 @@ class SyncController extends Controller
     }
 
     // GET /api/sync/pull?since=YYYY-MM-DD HH:MM:SS&limit=200
+    // Entidades según la base: pedidos (delivery, ecoruta_db) y/o
+    // ventas (tienda, floracia_db). Devuelve las que existan.
     public function pull(): void
     {
         try {
-            if (!$this->tableExists('venta')) {
-                $this->response->json(['success' => false, 'message' => 'Módulo de ventas no instalado en esta base (falta tabla venta)'], 501);
+            $hasPedidos = $this->tableExists('pedidos');
+            $hasVentas = $this->tableExists('venta');
+            if (!$hasPedidos && !$hasVentas) {
+                $this->response->json(['success' => false, 'message' => 'Esta base no tiene pedidos ni ventas para sincronizar'], 501);
                 return;
             }
             $since = (string)($this->request->getQueryParam('since') ?? '2000-01-01 00:00:00');
@@ -79,27 +88,30 @@ class SyncController extends Controller
                 $since = date('Y-m-d H:i:s', $ts);
             }
 
-            $hasUuid = $this->colExists('venta', 'sync_uuid');
-            $hasOrigen = $this->colExists('venta', 'origen');
-            $hasUpdated = $this->colExists('venta', 'updated_at');
+            $ventas = [];
+            if ($hasVentas) {
+                $hasUuid = $this->colExists('venta', 'sync_uuid');
+                $hasOrigen = $this->colExists('venta', 'origen');
+                $hasUpdated = $this->colExists('venta', 'updated_at');
 
-            $updatedExpr = $hasUpdated ? 'v.updated_at' : 'v.fecha_emision';
-            $uuidSel = $hasUuid ? 'v.sync_uuid' : 'NULL AS sync_uuid';
-            $origenSel = $hasOrigen ? 'v.origen' : "'web' AS origen";
+                $updatedExpr = $hasUpdated ? 'v.updated_at' : 'v.fecha_emision';
+                $uuidSel = $hasUuid ? 'v.sync_uuid' : 'NULL AS sync_uuid';
+                $origenSel = $hasOrigen ? 'v.origen' : "'web' AS origen";
 
-            $q = "SELECT v.*, {$uuidSel}, {$origenSel}, {$updatedExpr} AS _sync_ts
-                  FROM venta v
-                  WHERE {$updatedExpr} > :since
-                  ORDER BY {$updatedExpr} ASC
-                  LIMIT {$limit}";
-            $st = $this->db->prepare($q);
-            $st->execute(['since' => $since]);
-            $ventas = $st->fetchAll(PDO::FETCH_ASSOC);
+                $q = "SELECT v.*, {$uuidSel}, {$origenSel}, {$updatedExpr} AS _sync_ts
+                      FROM venta v
+                      WHERE {$updatedExpr} > :since
+                      ORDER BY {$updatedExpr} ASC
+                      LIMIT {$limit}";
+                $st = $this->db->prepare($q);
+                $st->execute(['since' => $since]);
+                $ventas = $st->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             // Detalles de esas ventas
             $ids = array_column($ventas, 'id_venta');
             $detalles = [];
-            if ($ids) {
+            if ($ids && $this->tableExists('detalle_venta')) {
                 $ph = implode(',', array_fill(0, count($ids), '?'));
                 $dst = $this->db->prepare("SELECT * FROM detalle_venta WHERE id_venta IN ($ph)");
                 $dst->execute($ids);
@@ -115,17 +127,54 @@ class SyncController extends Controller
             }
             $insumos = [];
             try {
-                $insumos = $this->db->query(
-                    'SELECT id_insumo, stock FROM insumo'
-                )->fetchAll(PDO::FETCH_ASSOC);
+                if ($this->tableExists('insumo')) {
+                    $insumos = $this->db->query(
+                        'SELECT id_insumo, stock FROM insumo'
+                    )->fetchAll(PDO::FETCH_ASSOC);
+                }
             } catch (\Throwable $e) {
                 $insumos = [];
             }
 
+            // Pedidos delivery (ecoruta_db): incremental por updated_at/fecha_solicitud
+            $pedidos = [];
+            $historial = [];
             $maxTs = $since;
+            if ($hasPedidos) {
+                $pedTsExpr = $this->colExists('pedidos', 'updated_at') ? 'p.updated_at' : 'p.fecha_solicitud';
+                $pedUuidSel = $this->colExists('pedidos', 'sync_uuid') ? 'p.sync_uuid' : 'NULL AS sync_uuid';
+                $pedOrigenSel = $this->colExists('pedidos', 'origen') ? 'p.origen' : "'web' AS origen";
+                $qp = "SELECT p.*, {$pedUuidSel}, {$pedOrigenSel}, {$pedTsExpr} AS _sync_ts
+                       FROM pedidos p
+                       WHERE {$pedTsExpr} > :since
+                       ORDER BY {$pedTsExpr} ASC
+                       LIMIT {$limit}";
+                $stp = $this->db->prepare($qp);
+                $stp->execute(['since' => $since]);
+                $pedidos = $stp->fetchAll(PDO::FETCH_ASSOC);
+
+                $pids = array_column($pedidos, 'id_pedido');
+                if ($pids && $this->tableExists('historial_estados')) {
+                    $ph = implode(',', array_fill(0, count($pids), '?'));
+                    $sth = $this->db->prepare("SELECT * FROM historial_estados WHERE id_pedido IN ($ph) ORDER BY fecha_cambio ASC");
+                    $sth->execute($pids);
+                    $historial = $sth->fetchAll(PDO::FETCH_ASSOC);
+                }
+                foreach ($pedidos as $p) {
+                    if (!empty($p['_sync_ts']) && $p['_sync_ts'] > $maxTs) {
+                        $maxTs = $p['_sync_ts'];
+                    }
+                }
+            }
+
             foreach ($ventas as $v) {
                 if (!empty($v['_sync_ts']) && $v['_sync_ts'] > $maxTs) {
                     $maxTs = $v['_sync_ts'];
+                }
+            }
+            foreach ($pedidos as $p) {
+                if (!empty($p['_sync_ts']) && $p['_sync_ts'] > $maxTs) {
+                    $maxTs = $p['_sync_ts'];
                 }
             }
 
@@ -136,6 +185,8 @@ class SyncController extends Controller
                     'detalles' => $detalles,
                     'stock_producto' => $stocks,
                     'insumos' => $insumos,
+                    'pedidos' => $pedidos,
+                    'historial' => $historial,
                 ],
                 'server_time' => date('Y-m-d H:i:s'),
                 'max_ts' => $maxTs,
@@ -147,27 +198,41 @@ class SyncController extends Controller
 
     /**
      * POST /api/sync/push
-     * Body: { "ventas": [ {venta completa + detalles + sync_uuid}, ... ] }
+     * Body: { "pedidos": [ {pedido completo + sync_uuid}, ... ],
+     *         "ventas": [ {venta completa + detalles + sync_uuid}, ... ] }
      *
      * Respuesta por item:
-     *  { sync_uuid, status: applied|duplicado|conflicto_folio_reasignado|conflicto_stock|error,
-     *    id_venta, numero_factura, message }
+     *  { sync_uuid, status: applied|duplicado|conflicto_pago|conflicto_folio_reasignado|conflicto_stock|error,
+     *    id_pedido|id_venta, message }
+     *
+     * Regla de dinero (delivery): un pedido que ya figura pagado=1 en el
+     * servidor jamás se revierte a 0 por un reintento; el reintento con el
+     * mismo sync_uuid responde `duplicado` sin tocar nada.
      */
     public function push(): void
     {
         try {
-            if (!$this->tableExists('venta')) {
-                $this->response->json(['success' => false, 'message' => 'Módulo de ventas no instalado en esta base (falta tabla venta)'], 501);
+            $hasPedidos = $this->tableExists('pedidos');
+            $hasVentas = $this->tableExists('venta');
+            if (!$hasPedidos && !$hasVentas) {
+                $this->response->json(['success' => false, 'message' => 'Esta base no tiene pedidos ni ventas para sincronizar'], 501);
                 return;
             }
             $body = $this->request->getBody();
+            $pedidos = $body['pedidos'] ?? [];
             $ventas = $body['ventas'] ?? $body['items'] ?? [];
-            if (!is_array($ventas)) {
-                $this->response->json(['success' => false, 'message' => 'ventas debe ser un arreglo'], 422);
+            if (!is_array($pedidos) || !is_array($ventas)) {
+                $this->response->json(['success' => false, 'message' => 'pedidos y ventas deben ser arreglos'], 422);
                 return;
             }
-            if (count($ventas) > 100) {
-                $this->response->json(['success' => false, 'message' => 'Máximo 100 ventas por lote'], 422);
+            // Compat: antes solo se mandaba {ventas} o {items:ventas}; si hay
+            // tabla pedidos y el lote trae items sin formato venta, se ignora aquí.
+            if (count($pedidos) + count($ventas) > 100) {
+                $this->response->json(['success' => false, 'message' => 'Máximo 100 registros por lote'], 422);
+                return;
+            }
+            if (!$pedidos && !$ventas) {
+                $this->response->json(['success' => false, 'message' => 'Lote vacío: envía pedidos y/o ventas'], 422);
                 return;
             }
 
@@ -184,6 +249,9 @@ class SyncController extends Controller
             }
 
             $results = [];
+            foreach ($pedidos as $p) {
+                $results[] = $this->applyOnePedido((array)$p, $usuarioId);
+            }
             foreach ($ventas as $v) {
                 $results[] = $this->applyOneVenta((array)$v, $usuarioId);
             }
@@ -352,11 +420,166 @@ class SyncController extends Controller
 
     private function resolveSystemUserId(): int
     {
+        // ecoruta_db usa `usuarios`, floracia_db usa `usuario`.
+        foreach (['usuarios', 'usuario'] as $t) {
+            try {
+                $row = $this->db->query("SELECT id_usuario FROM `{$t}` ORDER BY id_usuario ASC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    return (int)$row['id_usuario'];
+                }
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Aplica UN pedido delivery de forma idempotente.
+     * - Mismo sync_uuid ya aplicado -> `duplicado` (no inserta, no cobra dos veces).
+     * - El local ya validó con el mismo código (createOrder); aquí se revalidan
+     *   mínimos y se inserta tal cual con su tarifa/monto ya calculados.
+     * - Regla de dinero: jamás revierte pagado=1 a 0 (ese caso ni siquiera
+     *   llega aquí: el uuid existente responde duplicado antes de tocar nada).
+     */
+    private function applyOnePedido(array $p, int $usuarioId): array
+    {
+        $uuid = trim((string)($p['sync_uuid'] ?? ''));
+        if ($uuid === '' || strlen($uuid) < 8) {
+            return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'sync_uuid requerido'];
+        }
+
         try {
-            $row = $this->db->query('SELECT id_usuario FROM usuario ORDER BY id_usuario ASC LIMIT 1')->fetch(PDO::FETCH_ASSOC);
-            return (int)($row['id_usuario'] ?? 0);
+            if ($this->colExists('pedidos', 'sync_uuid')) {
+                $st = $this->db->prepare('SELECT id_pedido, pagado, id_estado FROM pedidos WHERE sync_uuid = :u LIMIT 1');
+                $st->execute(['u' => $uuid]);
+                $row = $st->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    return [
+                        'sync_uuid' => $uuid, 'status' => 'duplicado',
+                        'id_pedido' => (int)$row['id_pedido'],
+                        'message' => 'Ya existía (reintento seguro, no se duplicó ni se cobró dos veces)',
+                    ];
+                }
+            }
+
+            $origen = trim((string)($p['direccion_origen'] ?? ''));
+            $destino = trim((string)($p['direccion_destino'] ?? ''));
+            if ($origen === '' || $destino === '') {
+                return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'Pedido sin dirección de origen o destino'];
+            }
+
+            // Comercio: el indicado si existe, si no el primero (igual que createOrder).
+            $idComercio = (int)($p['id_comercio'] ?? 0);
+            if ($idComercio > 0) {
+                $chk = $this->db->prepare('SELECT 1 FROM comercios WHERE id_comercio = :id LIMIT 1');
+                $chk->execute(['id' => $idComercio]);
+                if (!$chk->fetchColumn()) {
+                    $idComercio = 0;
+                }
+            }
+            if ($idComercio <= 0) {
+                $idComercio = (int)$this->db->query('SELECT id_comercio FROM comercios ORDER BY id_comercio ASC LIMIT 1')->fetchColumn();
+                if ($idComercio <= 0) {
+                    return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'No hay comercios en el servidor para asignar el pedido'];
+                }
+            }
+
+            $metodo = (string)($p['metodo_pago'] ?? 'efectivo');
+            if (!in_array($metodo, ['efectivo', 'transferencia', 'mixto'], true)) {
+                $metodo = 'efectivo';
+            }
+            $pagado = (int)($p['pagado'] ?? 0) === 1 ? 1 : 0;
+
+            // Saneos numéricos (mismo criterio que createOrder)
+            $peso = (float)($p['peso_kg'] ?? 1.5);
+            if ($peso <= 0 || $peso > 50) {
+                $peso = 1.5;
+            }
+            $tarifa = max(0, (float)($p['tarifa_ecologica'] ?? 0));
+            if ($tarifa <= 0) {
+                return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'Pedido sin tarifa ecológica calculada'];
+            }
+
+            // Columnas según lo que tenga esta base (tolera deriva local/web)
+            $vals = [
+                'id_comercio' => $idComercio,
+                'id_cliente' => isset($p['id_cliente']) && (int)$p['id_cliente'] > 0 ? (int)$p['id_cliente'] : null,
+                'id_repartidor' => null, // la asignación viaja por su propio flujo tras el pull
+                'id_estado' => 1,
+                'direccion_origen' => $origen,
+                'direccion_destino' => $destino,
+                'detalle_paquete' => trim((string)($p['detalle_paquete'] ?? '')) !== '' ? trim((string)$p['detalle_paquete']) : 'Entrega Sustentable EcoRuta',
+                'peso_kg' => $peso,
+                'alto_cm' => isset($p['alto_cm']) && is_numeric($p['alto_cm']) ? (float)$p['alto_cm'] : null,
+                'ancho_cm' => isset($p['ancho_cm']) && is_numeric($p['ancho_cm']) ? (float)$p['ancho_cm'] : null,
+                'largo_cm' => isset($p['largo_cm']) && is_numeric($p['largo_cm']) ? (float)$p['largo_cm'] : null,
+                'distancia_km' => isset($p['distancia_km']) ? (float)$p['distancia_km'] : null,
+                'tarifa_ecologica' => $tarifa,
+                'metodo_pago' => $metodo,
+                'pagado' => $pagado,
+                'fecha_pago' => $pagado ? (string)($p['fecha_pago'] ?? date('Y-m-d H:i:s')) : null,
+                'comprobante_transferencia' => isset($p['comprobante_transferencia']) && trim((string)$p['comprobante_transferencia']) !== '' ? trim((string)$p['comprobante_transferencia']) : null,
+                'monto_efectivo' => isset($p['monto_efectivo']) && is_numeric($p['monto_efectivo']) ? (float)$p['monto_efectivo'] : null,
+                'monto_transferencia' => isset($p['monto_transferencia']) && is_numeric($p['monto_transferencia']) ? (float)$p['monto_transferencia'] : null,
+                'monto_recibido' => isset($p['monto_recibido']) && is_numeric($p['monto_recibido']) ? (float)$p['monto_recibido'] : null,
+                'vuelto' => isset($p['vuelto']) && is_numeric($p['vuelto']) ? (float)$p['vuelto'] : null,
+                'co2_ahorrado_kg' => isset($p['co2_ahorrado_kg']) ? (float)$p['co2_ahorrado_kg'] : 0,
+                'observaciones' => isset($p['observaciones']) ? trim((string)$p['observaciones'] . ' [sync local]') : '[sync local]',
+                'fecha_solicitud' => (string)($p['fecha_solicitud'] ?? date('Y-m-d H:i:s')),
+                'destinatario_nombre' => $p['destinatario_nombre'] ?? null,
+                'destinatario_telefono' => $p['destinatario_telefono'] ?? null,
+                'dest_lat' => isset($p['dest_lat']) && is_numeric($p['dest_lat']) ? (float)$p['dest_lat'] : null,
+                'dest_lng' => isset($p['dest_lng']) && is_numeric($p['dest_lng']) ? (float)$p['dest_lng'] : null,
+                'sync_uuid' => $uuid,
+                'origen' => 'local',
+            ];
+
+            $cols = [];
+            $phs = [];
+            $params = [];
+            foreach ($vals as $col => $val) {
+                if (!$this->colExists('pedidos', $col)) {
+                    continue;
+                }
+                $cols[] = "`$col`";
+                $phs[] = ":$col";
+                $params[$col] = $val;
+            }
+            if (!$cols) {
+                return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'Sin columnas compatibles en pedidos'];
+            }
+
+            $this->db->beginTransaction();
+            try {
+                $ins = $this->db->prepare('INSERT INTO pedidos (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $phs) . ')');
+                $ins->execute($params);
+                $idPedido = (int)$this->db->lastInsertId();
+
+                if ($this->tableExists('historial_estados')) {
+                    $hist = $this->db->prepare(
+                        'INSERT INTO historial_estados (id_pedido, id_estado_anterior, id_estado_nuevo, id_usuario_cambio, observacion)
+                         VALUES (:pedido, NULL, 1, :user, :note)'
+                    );
+                    $hist->execute([
+                        'pedido' => $idPedido,
+                        'user' => $usuarioId > 0 ? $usuarioId : null,
+                        'note' => 'Pedido sincronizado desde local (offline)',
+                    ]);
+                }
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                $this->db->rollBack();
+                throw $e;
+            }
+
+            return [
+                'sync_uuid' => $uuid, 'status' => 'applied',
+                'id_pedido' => $idPedido,
+                'message' => 'Pedido aplicado en el servidor',
+            ];
         } catch (\Throwable $e) {
-            return 0;
+            return $this->conflictOrError($uuid, $e);
         }
     }
 

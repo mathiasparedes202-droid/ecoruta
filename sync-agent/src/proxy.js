@@ -4,20 +4,38 @@ import { config } from './config.js';
 import { loadState } from './store.js';
 import { forward } from './webClient.js';
 import { enqueueOp, log } from './store.js';
-import { fetchLocalVenta } from './localDb.js';
+import { fetchLocalPedido, fetchLocalVenta } from './localDb.js';
 
 export const proxy = Router();
 proxy.use(json({ limit: '5mb' }));
 
+// Escrituras con snapshot idempotente: el pedido/venta creado offline se
+// guarda en local con sync_uuid y se encola para el push posterior.
+const SNAPSHOT_WRITES = [
+  {
+    test: (m, p) => m === 'POST' && /^\/api\/orders\/?$/.test(p),
+    type: 'pedido',
+    fetch: fetchLocalPedido,
+    pickId: (j) => j?.id_pedido,
+  },
+  {
+    test: (m, p) => m === 'POST' && /^\/api\/ventas\/?$/.test(p),
+    type: 'venta',
+    fetch: fetchLocalVenta,
+    pickId: (j) => j?.data?.venta?.id_venta || j?.data?.venta?.venta?.id_venta || j?.id_venta,
+  },
+];
+
 // El frontend apunta aquí (http://localhost:18650/api/*).
 // - GET: web si online, local si offline.
-// - POST /api/ventas: web si online; si offline -> local + outbox (sync_uuid inyectado).
-// - Resto de escrituras offline: se ejecutan en local y se encolan como replay genérico.
+// - POST /api/orders (y /api/ventas): web si online; si offline -> local + outbox.
+// - Resto de escrituras offline: local + replay genérico.
 proxy.use('/api', async (req, res) => {
   const s = loadState();
   const online = s.mode === 'online_web' || s.webReachable !== false;
   const isRead = ['GET', 'HEAD'].includes(req.method);
-  const isVentaWrite = req.method === 'POST' && /^\/api\/ventas\/?$/.test(req.originalUrl.split('?')[0]);
+  const path = req.originalUrl.split('?')[0];
+  const snap = SNAPSHOT_WRITES.find((w) => w.test(req.method, path));
 
   try {
     if (isRead) {
@@ -30,7 +48,7 @@ proxy.use('/api', async (req, res) => {
       return res.send(r.text);
     }
 
-    if (isVentaWrite) {
+    if (snap) {
       // Asegurar sync_uuid (idempotencia) antes de guardar en cualquier lado.
       req.body = req.body || {};
       if (!req.body.sync_uuid) req.body.sync_uuid = randomUUID();
@@ -42,17 +60,21 @@ proxy.use('/api', async (req, res) => {
 
       // Si fue a local (offline), encolar snapshot para el push posterior.
       if (!online && r.status >= 200 && r.status < 300) {
+        const kind = snap.type === 'pedido' ? 'pedido offline' : 'venta offline';
         try {
-          const idVenta = r.json?.data?.venta?.id_venta || r.json?.data?.venta?.venta?.id_venta || r.json?.id_venta;
-          const snapshot = idVenta ? await fetchLocalVenta(Number(idVenta)) : { ...req.body, detalles: req.body.detalles || [] };
-          if (snapshot) {
-            snapshot.sync_uuid = req.body.sync_uuid;
-            enqueueOp({ type: 'venta', sync_uuid: req.body.sync_uuid, snapshot });
-            log(`[proxy] venta offline ${req.body.sync_uuid} guardada en local y encolada`);
-          }
+          const id = snap.pickId(r.json);
+          const snapshot = id ? await snap.fetch(Number(id)) : null;
+          enqueueOp({
+            type: snap.type,
+            sync_uuid: req.body.sync_uuid,
+            snapshot: snapshot
+              ? { ...snapshot, sync_uuid: req.body.sync_uuid }
+              : { ...req.body },
+          });
+          log(`[proxy] ${kind} ${req.body.sync_uuid} guardado en local y encolado`);
         } catch (e) {
-          enqueueOp({ type: 'venta', sync_uuid: req.body.sync_uuid, snapshot: { ...req.body, detalles: req.body.detalles || [] } });
-          log(`[proxy] venta offline encolada por body (fallback): ${e.message}`);
+          enqueueOp({ type: snap.type, sync_uuid: req.body.sync_uuid, snapshot: { ...req.body } });
+          log(`[proxy] ${kind} encolado por body (fallback): ${e.message}`);
         }
       }
       res.status(r.status);
@@ -73,14 +95,14 @@ proxy.use('/api', async (req, res) => {
     res.set('content-type', r.contentType || 'text/plain');
     return res.send(r.text);
   } catch (e) {
-    // Si la web falló a mitad de camino, degradar a local solo en lecturas/ventas.
+    // Si la web falló a mitad de camino, degradar a local en lecturas y snapshot-writes.
     log(`[proxy] error contactando destino (${e.message}), degradando a local`);
     try {
       const r = await forward(config.localBase, req, { 'x-sync-key': config.localSyncKey });
-      if (isVentaWrite && r.status >= 200 && r.status < 300) {
+      if (snap && r.status >= 200 && r.status < 300) {
         req.body = req.body || {};
         if (!req.body.sync_uuid) req.body.sync_uuid = randomUUID();
-        enqueueOp({ type: 'venta', sync_uuid: req.body.sync_uuid, snapshot: { ...req.body, detalles: req.body.detalles || [] } });
+        enqueueOp({ type: snap.type, sync_uuid: req.body.sync_uuid, snapshot: { ...req.body } });
       }
       res.status(r.status);
       if (r.json) return res.json(r.json);
