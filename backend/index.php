@@ -222,11 +222,22 @@ if ($method === 'GET' && $path === '/api/metrics') {
 }
 
 // Sincronización offline (intermediario PC en sync-agent/).
-// El SyncController vive en app/ y comparte lógica con routes/api.php;
-// aquí se expone en el router que realmente atiende las peticiones.
+// Delivery (pedidos) corre con funciones planas de src/services/sync_service.php
+// para no depender del autoloader de Composer. Tienda (ventas) delega al
+// SyncController de app/ solo si la clase existe y la base tiene venta.
+require_once __DIR__ . '/src/services/sync_service.php';
+
 if ($method === 'GET' && $path === '/api/sync/health') {
-    $syncCtl = new \App\Controllers\SyncController(new \Core\Request(), new \Core\Response());
-    $syncCtl->health();
+    try {
+        database()->query('SELECT 1')->fetch();
+        sendJson([
+            'success' => true,
+            'server_time' => date('Y-m-d H:i:s'),
+            'service' => 'ecoruta-api',
+        ]);
+    } catch (Throwable $e) {
+        sendJson(['success' => false, 'message' => 'DB no disponible'], 503);
+    }
 }
 
 if (($method === 'GET' && $path === '/api/sync/pull') || ($method === 'POST' && $path === '/api/sync/push')) {
@@ -247,11 +258,51 @@ if (($method === 'GET' && $path === '/api/sync/pull') || ($method === 'POST' && 
     if ($expectedSyncKey === '' || $givenSyncKey === null || !hash_equals($expectedSyncKey, (string) $givenSyncKey)) {
         sendJson(['success' => false, 'message' => 'No autorizado (X-Sync-Key inválido)'], 401);
     }
-    $syncCtl = new \App\Controllers\SyncController(new \Core\Request(), new \Core\Response());
+
     if ($method === 'GET') {
-        $syncCtl->pull();
+        try {
+            $since = (string) ($_GET['since'] ?? '2000-01-01 00:00:00');
+            $limit = (int) ($_GET['limit'] ?? 200);
+            $data = syncPullPedidos($since, $limit);
+            sendJson([
+                'success' => true,
+                'data' => [
+                    'pedidos' => $data['pedidos'],
+                    'historial' => $data['historial'],
+                    'ventas' => [],
+                    'detalles' => [],
+                ],
+                'server_time' => date('Y-m-d H:i:s'),
+                'max_ts' => $data['max_ts'],
+            ]);
+        } catch (Throwable $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     } else {
-        $syncCtl->push();
+        try {
+            $body = requestBody();
+            $pedidos = $body['pedidos'] ?? [];
+            $ventas = $body['ventas'] ?? $body['items'] ?? [];
+            if (!is_array($pedidos) || !is_array($ventas)) {
+                sendJson(['success' => false, 'message' => 'pedidos y ventas deben ser arreglos'], 422);
+            }
+            if (count($pedidos) + count($ventas) > 100) {
+                sendJson(['success' => false, 'message' => 'Máximo 100 registros por lote'], 422);
+            }
+            $results = syncPushPedidos($pedidos, 0);
+            // Tienda solo donde exista el módulo (clase + tabla); si no, error controlado por item.
+            foreach ($ventas as $v) {
+                $uuid = trim((string) (((array) $v)['sync_uuid'] ?? ''));
+                $results[] = ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'Módulo tienda no disponible en este servidor (solo delivery)'];
+            }
+            sendJson([
+                'success' => true,
+                'server_time' => date('Y-m-d H:i:s'),
+                'results' => $results,
+            ]);
+        } catch (Throwable $e) {
+            sendJson(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }
 
