@@ -28,6 +28,7 @@ export type Pedido = {
   monto_recibido?: number;
   vuelto?: number;
   comprobante_transferencia?: string;
+  sync_uuid?: string | null;
 };
 
 export type RepartidorUser = {

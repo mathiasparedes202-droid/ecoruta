@@ -581,6 +581,18 @@ keyframes spin {
     text-align:center;
 }
 
+.courier-warning-banner--offline {
+    background:#fef3c7;
+    border-color:#f59e0b;
+    color:#92400e;
+}
+
+.courier-warning-banner--conflict {
+    background:#fee2e2;
+    border-color:#f87171;
+    color:#991b1b;
+}
+
 .notif-bell {
     position:relative;
 }

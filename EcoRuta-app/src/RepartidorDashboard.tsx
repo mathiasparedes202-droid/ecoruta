@@ -10,6 +10,10 @@ import RepartidorHeader from './components/repartidor/RepartidorHeader';
 import RoutePanel from './components/repartidor/RoutePanel';
 import CourierStats from './components/repartidor/CourierStats';
 import { Pedido, RepartidorUser } from './types/repartidor';
+import {
+  loadCachedOrders, saveCachedOrders, enqueueOp, flushOutbox,
+  pendingCount as queuePendingCount, conflictCount as queueConflictCount, isNetworkError,
+} from './lib/offlineSync';
 
 interface RepartidorDashboardProps { user: RepartidorUser; onLogout: () => void; }
 
@@ -65,6 +69,19 @@ const RepartidorDashboard = ({ user, onLogout }: RepartidorDashboardProps) => {
   const [turnoError, setTurnoError] = useState('');
   const isAvailable = turno === 'activo';
 
+  // Modo mula: sin señal se trabaja con la copia guardada y los cambios
+  // quedan en la cola del teléfono hasta recuperar conexión.
+  const [offlineMode, setOfflineMode] = useState(
+    typeof navigator !== 'undefined' && navigator.onLine === false
+  );
+  const [cacheSavedAt, setCacheSavedAt] = useState<string | null>(null);
+  const [pendingOps, setPendingOps] = useState<number>(() => queuePendingCount());
+  const [conflictOps, setConflictOps] = useState<number>(() => queueConflictCount());
+  const refreshQueueCounters = useCallback(() => {
+    setPendingOps(queuePendingCount());
+    setConflictOps(queueConflictCount());
+  }, []);
+
   const authHeaders = (json = false): Record<string, string> => {
     const headers: Record<string, string> = {};
     if (json) headers['Content-Type'] = 'application/json';
@@ -119,10 +136,20 @@ const RepartidorDashboard = ({ user, onLogout }: RepartidorDashboardProps) => {
       const data: Pedido[] = await response.json();
       const formattedOrders = Array.isArray(data) ? data.map(normalizeOrder) : [];
       setOrders(formattedOrders);
+      saveCachedOrders(formattedOrders);
+      setCacheSavedAt(new Date().toISOString());
+      setOfflineMode(false);
       setSelectedOrder(current => formattedOrders.find(order => order.id_pedido === current?.id_pedido) || formattedOrders.find(order => order.id_estado === 3) || formattedOrders.find(order => order.id_estado === 2) || formattedOrders[0] || null);
       if (showFeedback) Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Tu turno está actualizado', showConfirmButton: false, timer: 1800 });
     } catch (error) {
       console.error('No fue posible cargar las órdenes:', error);
+      // Sin red: se sigue con la copia guardada en el teléfono.
+      const cached = loadCachedOrders();
+      if (cached) {
+        setOrders(cached.orders);
+        setCacheSavedAt(cached.savedAt);
+        setOfflineMode(true);
+      }
       if (showFeedback) Swal.fire({ icon: 'warning', title: 'Sin conexión', text: 'No pudimos actualizar tus órdenes. Cuando vuelva la conexión, se actualizan solas.' });
     } finally { setIsLoading(false); setIsRefreshing(false); }
   }, [repartidorId]);
@@ -141,15 +168,85 @@ const RepartidorDashboard = ({ user, onLogout }: RepartidorDashboardProps) => {
     };
   }, [loadOrders]);
 
+  // Sube la cola del teléfono. Se llama al volver la señal, al enfocar
+  // y al actualizar manual. Tras aplicar, recarga las órdenes.
+  const flushQueue = useCallback(async (announce = false) => {
+    const token = localStorage.getItem('ecoruta_token');
+    let result;
+    try {
+      result = await flushOutbox(API, token, Number(user.id_usuario));
+    } catch {
+      return;
+    }
+    refreshQueueCounters();
+    if (result.stillOffline) {
+      setOfflineMode(true);
+      return;
+    }
+    if (result.authExpired && announce) {
+      Swal.fire({ icon: 'warning', title: 'Sesión vencida', text: 'Volvé a ingresar para sincronizar los cambios guardados.' });
+      return;
+    }
+    if (result.applied > 0) {
+      setOfflineMode(false);
+      await loadOrders();
+      if (announce) Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Sincronizados ${result.applied} cambio(s)`, showConfirmButton: false, timer: 2200 });
+    }
+    if (result.conflicts > 0) refreshQueueCounters();
+  }, [loadOrders, refreshQueueCounters, user.id_usuario]);
+
+  useEffect(() => {
+    const goOnline = () => { void flushQueue(false); };
+    const goOffline = () => setOfflineMode(true);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, [flushQueue]);
+
+  const handleRefresh = useCallback(async () => {
+    await flushQueue(false);
+    await loadOrders(true);
+  }, [flushQueue, loadOrders]);
+
+  // Aplica el cambio en la copia local y lo encola (optimista offline).
+  const applyLocalChange = useCallback((idPedido: number, patch: Partial<Pedido>) => {
+    setOrders(current => {
+      const next = current.map(o => (o.id_pedido === idPedido ? { ...o, ...patch } : o));
+      saveCachedOrders(next);
+      return next;
+    });
+  }, []);
+
+  const queueOfflineChange = useCallback((action: 'estado' | 'pago' | 'cancel', order: Pedido, payload: Record<string, unknown>, doneMsg: string) => {
+    applyLocalChange(order.id_pedido, action === 'estado'
+      ? { id_estado: Number(payload.id_estado), ...(Number(payload.id_estado) === 4 ? { fecha_entrega: new Date().toISOString() } : {}) }
+      : action === 'pago'
+        ? { pagado: true, monto_recibido: Number((payload as { monto_recibido?: unknown }).monto_recibido ?? order.monto_recibido ?? 0) }
+        : { id_estado: 5 });
+    enqueueOp({ action, id_pedido: order.id_pedido, sync_uuid: order.sync_uuid ?? null, payload });
+    refreshQueueCounters();
+    setOfflineMode(true);
+    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: doneMsg, text: 'Se sincroniza solo al volver la señal.', showConfirmButton: false, timer: 2600 });
+  }, [applyLocalChange, refreshQueueCounters]);
+
   const updateOrderStatus = async (order: Pedido, status: number, note?: string) => {
     const token = localStorage.getItem('ecoruta_token');
-    const response = await fetch(`${API}/orders/${order.id_pedido}/status`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ id_estado: status, id_usuario_cambio: user.id_usuario, observacion: note || (status === 3 ? 'El repartidor inició el recorrido.' : 'Estado actualizado por el repartidor.') })
-    });
-    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'No pudimos guardar el cambio.'); }
-    await loadOrders();
+    const payload = { id_estado: status, id_usuario_cambio: user.id_usuario, observacion: note || (status === 3 ? 'El repartidor inició el recorrido.' : 'Estado actualizado por el repartidor.') };
+    try {
+      const response = await fetch(`${API}/orders/${order.id_pedido}/status`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'No pudimos guardar el cambio.'); }
+      await loadOrders();
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      queueOfflineChange('estado', order, payload, status === 4 ? 'Entrega guardada en el teléfono' : 'Cambio guardado en el teléfono');
+    }
   };
 
   const handleStatusChange = async (order: Pedido, status: number) => {
@@ -167,13 +264,19 @@ const RepartidorDashboard = ({ user, onLogout }: RepartidorDashboardProps) => {
   };
   const markPaid = async (order: Pedido, pagado: boolean, extra: Record<string, unknown> = {}) => {
     const token = localStorage.getItem('ecoruta_token');
-    const response = await fetch(`${API}/orders/${order.id_pedido}/pago`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ pagado, ...extra })
-    });
-    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'No pudimos registrar el pago.'); }
-    await loadOrders();
+    const payload = { pagado, ...extra };
+    try {
+      const response = await fetch(`${API}/orders/${order.id_pedido}/pago`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'No pudimos registrar el pago.'); }
+      await loadOrders();
+    } catch (error) {
+      if (!isNetworkError(error)) throw error;
+      queueOfflineChange('pago', order, payload, 'Cobro guardado en el teléfono');
+    }
   };
 
   const handleDelivery = async (order: Pedido, note: string, cash: { montoRecibido?: number } = {}) => {
@@ -193,15 +296,25 @@ const RepartidorDashboard = ({ user, onLogout }: RepartidorDashboardProps) => {
 
   const handleCancelOrder = async (order: Pedido, motivo: string) => {
     const token = localStorage.getItem('ecoruta_token');
-    const response = await fetch(`${API}/orders/${order.id_pedido}/cancel`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ motivo, id_usuario_cambio: user.id_usuario })
-    });
-    if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'No pudimos cancelar el pedido.'); }
-    setCancellingOrder(null);
-    await loadOrders();
-    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Pedido cancelado', text: `El pedido #${order.id_pedido} fue cancelado y te notificamos al administrador.`, showConfirmButton: false, timer: 2200 });
+    const payload = { motivo, id_usuario_cambio: user.id_usuario };
+    try {
+      const response = await fetch(`${API}/orders/${order.id_pedido}/cancel`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'No pudimos cancelar el pedido.'); }
+      setCancellingOrder(null);
+      await loadOrders();
+      Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Pedido cancelado', text: `El pedido #${order.id_pedido} fue cancelado y te notificamos al administrador.`, showConfirmButton: false, timer: 2200 });
+    } catch (error) {
+      if (!isNetworkError(error)) {
+        Swal.fire({ icon: 'error', title: 'No pudimos cancelar el pedido', text: error instanceof Error ? error.message : 'Vuelve a intentarlo.' });
+        return;
+      }
+      setCancellingOrder(null);
+      queueOfflineChange('cancel', order, payload, 'Cancelación guardada en el teléfono');
+    }
   };
 
   const handleSelectOrder = (order: Pedido) => {
@@ -237,11 +350,24 @@ const RepartidorDashboard = ({ user, onLogout }: RepartidorDashboardProps) => {
   const openOrdersTab = () => setActiveTab('ordenes');
 
   return <main className="courier-dashboard">
-    <RepartidorHeader user={user} isAvailable={isAvailable} turno={turno} isRefreshing={isRefreshing} onAvailabilityChange={() => handleTurnoChange(turno === 'activo' ? 'pausado' : 'activo')} onRefresh={() => loadOrders(true)} onLogout={onLogout} onOpenOrders={openOrdersTab} />
+    <RepartidorHeader user={user} isAvailable={isAvailable} turno={turno} isRefreshing={isRefreshing} onAvailabilityChange={() => handleTurnoChange(turno === 'activo' ? 'pausado' : 'activo')} onRefresh={() => void handleRefresh()} onLogout={onLogout} onOpenOrders={openOrdersTab} />
     <div className="courier-content">
       {turnoError && (
         <div className="courier-warning-banner">
           <span>{turnoError}</span>
+        </div>
+      )}
+      {offlineMode && (
+        <div className="courier-warning-banner courier-warning-banner--offline">
+          <span>
+            Sin conexión: estás viendo datos guardados{cacheSavedAt ? ` (${new Date(cacheSavedAt).toLocaleString('es-PY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})` : ''}.
+            {pendingOps > 0 ? ` ${pendingOps} cambio(s) en el teléfono, se suben solos.` : ' Podés seguir entregando y cobrando.'}
+          </span>
+        </div>
+      )}
+      {conflictOps > 0 && (
+        <div className="courier-warning-banner courier-warning-banner--conflict">
+          <span>{conflictOps} cambio(s) rechazados por el servidor. Revisalos con tu supervisor (quedaron guardados en el teléfono).</span>
         </div>
       )}
       <div className="tab-view" data-tab={activeTab === 'inicio' ? 'true' : 'invisible'}>
