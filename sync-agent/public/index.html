@@ -41,6 +41,18 @@
     <div class="card"><h3>Cola pendiente (<span id="pendingN">0</span>)</h3><div id="outbox">…</div></div>
     <div class="card"><h3>Conflictos (<span id="confN">0</span>)</h3><div id="conflicts">…</div></div>
   </div>
+  <div class="card">
+    <h3>Nodo remoto · sincronizar por pendrive</h3>
+    <p style="color:#94a3b8;font-size:13px">Sin internet ni señal: lleva los archivos en pendrive entre la PC remota y una PC conectada. Importar dos veces no duplica (idempotencia por <code>sync_uuid</code>).</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <a href="/agent/export/outbox"><button>1 · Exportar cola</button></a>
+      <label style="font-size:13px">2 · Importar cola: <input type="file" id="impOutbox" accept=".json,application/json"></label>
+      <label style="font-size:13px">Desde: <input id="pullSince" value="2000-01-01 00:00:00" size="19"></label>
+      <button onclick="exportPull()">3 · Exportar novedades web</button>
+      <label style="font-size:13px">4 · Importar novedades: <input type="file" id="impPull" accept=".json,application/json"></label>
+    </div>
+    <div id="pendriveMsg" style="font-size:13px;margin-top:8px"></div>
+  </div>
   <div class="card"><h3>Log</h3><pre id="log">…</pre></div>
 </main>
 <script>
@@ -84,6 +96,34 @@ async function syncMissing(){
   const r=await j('/agent/sync-missing',{method:'POST'});
   alert(r.success?`Faltantes encolados: ${r.faltantes} (web: ${r.web}, locales: ${r.locales}). Se subirán en el próximo ciclo.`:`Error: ${r.message}`);
   load();
+}
+function readJsonFile(input, cb){
+  const f=input.files && input.files[0];
+  if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ cb(JSON.parse(rd.result)); }catch(e){ document.getElementById('pendriveMsg').textContent='Archivo inválido: '+e.message; } input.value=''; };
+  rd.readAsText(f);
+}
+document.getElementById('impOutbox').addEventListener('change', (ev)=>{
+  readJsonFile(ev.target, async (data)=>{
+    const r=await j('/agent/import/outbox',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+    document.getElementById('pendriveMsg').textContent=r.success?`Cola importada: ${r.merged} nuevas, ${r.skipped} ya estaban.`:`Error: ${r.message}`;
+    load();
+  });
+});
+document.getElementById('impPull').addEventListener('change', (ev)=>{
+  readJsonFile(ev.target, async (data)=>{
+    const r=await j('/agent/import/pull',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)});
+    document.getElementById('pendriveMsg').textContent=r.success?`Novedades aplicadas: ${JSON.stringify(r.resumen)}`:`Error: ${r.message}`;
+    load();
+  });
+});
+async function exportPull(){
+  const since=document.getElementById('pullSince').value||'2000-01-01 00:00:00';
+  const a=document.createElement('a');
+  a.href='/agent/export/pull?since='+encodeURIComponent(since);
+  a.download='';
+  document.body.appendChild(a);a.click();a.remove();
 }
 async function bootstrap(){
   if(!confirm('Va a encolar TODOS los pedidos locales sin código sync para subirlos a la web. Si un mismo pedido real ya existe en la web, se duplicará. ¿Continuar?'))return;

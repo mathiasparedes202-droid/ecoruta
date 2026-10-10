@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { loadOutbox, loadState, saveState, tailLog, log, enqueueOp, saveOutbox, serDates } from './store.js';
 import { proxy } from './proxy.js';
 import { runCycle, refreshHealth, runPush, runPull } from './sync.js';
+import { webPull, localPush } from './webClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -149,6 +150,94 @@ app.post('/agent/bootstrap', async (_req, res) => {
     }
     log(`[bootstrap] ${n} pedido(s) histórico(s) encolados para subir a la web`);
     res.json({ success: true, enqueued: n });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// ---- Sync por pendrive (nodo remoto sin conectividad) ----
+// OUT (remoto -> conectado): exporta la cola pendiente a archivo.
+// En la PC conectada se importa y el ciclo normal la sube a la web.
+// IN (web -> remoto): se exporta el pull y en destino se aplica en local.
+// Todo idempotente por sync_uuid: importar dos veces no duplica.
+app.get('/agent/export/outbox', (_req, res) => {
+  const items = loadOutbox().filter((x) => x.status === 'pending');
+  res.attachment(`ecoruta-outbox-${Date.now()}.json`);
+  res.json({ exported_at: new Date().toISOString(), items });
+});
+
+app.post('/agent/import/outbox', (req, res) => {
+  try {
+    const incoming = Array.isArray(req.body?.items) ? req.body.items : null;
+    if (!incoming) return res.status(422).json({ success: false, message: 'items debe ser un arreglo' });
+    if (incoming.length > 500) return res.status(422).json({ success: false, message: 'máximo 500 ops por archivo' });
+    const items = loadOutbox();
+    const keyOf = (x) => `${x.type}|${x.action || ''}|${x.sync_uuid || x.id || ''}`;
+    const seen = new Set(items.map(keyOf));
+    let merged = 0, skipped = 0;
+    for (const it of incoming) {
+      if (!it || typeof it !== 'object') { skipped++; continue; }
+      const k = keyOf(it);
+      if (seen.has(k)) { skipped++; continue; }
+      seen.add(k);
+      items.push({
+        id: `op_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+        created_at: it.created_at || new Date().toISOString(),
+        attempts: 0, status: 'pending',
+        type: it.type, action: it.action, sync_uuid: it.sync_uuid,
+        snapshot: it.snapshot, payload: it.payload, method: it.method, path: it.path, body: it.body,
+        imported: true,
+      });
+      merged++;
+    }
+    saveOutbox(items);
+    log(`[pendrive] importados ${merged} ops a la cola (${skipped} ya estaban)`);
+    res.json({ success: true, merged, skipped });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+app.get('/agent/export/pull', async (req, res) => {
+  try {
+    // Pagina todo lo nuevo de la web en un solo archivo.
+    const all = { pedidos: [], ventas: [], detalles: [] };
+    let since = String(req.query.since || '2000-01-01 00:00:00');
+    for (let page = 0; page < 20; page++) {
+      const pull = await webPull(since, 500);
+      if (!pull?.success) {
+        return res.status(502).json({ success: false, message: pull?.message || 'la web no devolvió el pull' });
+      }
+      all.pedidos.push(...(pull.data?.pedidos || []));
+      all.ventas.push(...(pull.data?.ventas || []));
+      all.detalles.push(...(pull.data?.detalles || []));
+      if ((pull.data?.pedidos || []).length < 500 && (pull.data?.ventas || []).length < 500) break;
+      since = pull.max_ts || since;
+    }
+    res.attachment(`ecoruta-pull-${Date.now()}.json`);
+    res.json({ exported_at: new Date().toISOString(), data: all });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+app.post('/agent/import/pull', async (req, res) => {
+  try {
+    const data = req.body?.data;
+    if (!data || typeof data !== 'object') {
+      return res.status(422).json({ success: false, message: 'data debe ser el objeto exportado' });
+    }
+    const pedidos = Array.isArray(data.pedidos) ? data.pedidos : [];
+    const ventas = Array.isArray(data.ventas) ? data.ventas : [];
+    if (pedidos.length + ventas.length > 1000) {
+      return res.status(422).json({ success: false, message: 'máximo 1000 registros por archivo' });
+    }
+    const resync = (arr) => arr.map((x) => ({ ...x })); // el endpoint local valida e ignora duplicados
+    const r = await localPush({ pedidos: resync(pedidos), ventas: resync(ventas), replays: [] });
+    const byStatus = {};
+    for (const x of r.results || []) byStatus[x.status] = (byStatus[x.status] || 0) + 1;
+    log(`[pendrive] pull importado: ${JSON.stringify(byStatus)}`);
+    res.json({ success: true, resumen: byStatus });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
