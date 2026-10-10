@@ -8,6 +8,22 @@ import { runCycle, refreshHealth, runPush, runPull } from './sync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// CORS: el navegador (ej. http://localhost:5173) habla directo con el agente,
+// así que el preflight OPTIONS debe responderlo el agente, no el PHP de atrás.
+// Se refleja el Origin y se permiten credenciales (el frontend usa Bearer + cookies).
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  res.set('Access-Control-Allow-Origin', origin || '*');
+  res.set('Vary', 'Origin');
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Sync-Key');
+  res.set('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
 app.use(express.json({ limit: '5mb' }));
 
 // Panel local
