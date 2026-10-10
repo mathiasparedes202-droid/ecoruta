@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoRuta · Sync Agent (PC)</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#0f172a;color:#e2e8f0}
+  header{padding:16px 20px;background:#111c33;border-bottom:1px solid #26314d;display:flex;gap:12px;align-items:center}
+  .pill{padding:4px 12px;border-radius:999px;font-weight:700;font-size:13px}
+  .online{background:#065f46;color:#a7f3d0}.offline{background:#7f1d1d;color:#fecaca}.unknown{background:#374151;color:#e5e7eb}
+  main{padding:20px;max-width:1000px;margin:auto;display:grid;gap:16px}
+  .card{background:#16213c;border:1px solid #26314d;border-radius:12px;padding:16px}
+  button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{border-bottom:1px solid #26314d;padding:8px;text-align:left;vertical-align:top}
+  code{background:#0b1226;padding:2px 6px;border-radius:6px}
+  pre{background:#0b1226;padding:12px;border-radius:8px;max-height:300px;overflow:auto;font-size:12px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <strong>EcoRuta · Intermediario PC</strong>
+  <span id="mode" class="pill unknown">…</span>
+  <span style="flex:1"></span>
+  <button id="syncBtn" onclick="syncNow()">Sincronizar ahora</button>
+</header>
+<main>
+  <div class="card">
+    <h3>Estado</h3>
+    <div id="status">Cargando…</div>
+    <p style="color:#94a3b8;font-size:13px">El frontend debe apuntar a <code>http://localhost:18650</code>.
+    Cuando la web cae, el agente guarda en local y encola; al volver internet sube la cola sin duplicar facturas y sin dejar stock negativo.</p>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Cola pendiente (<span id="pendingN">0</span>)</h3><div id="outbox">…</div></div>
+    <div class="card"><h3>Conflictos (<span id="confN">0</span>)</h3><div id="conflicts">…</div></div>
+  </div>
+  <div class="card"><h3>Log</h3><pre id="log">…</pre></div>
+</main>
+<script>
+async function j(u,o){const r=await fetch(u,o);return r.json();}
+async function load(){
+  const s=await j('/agent/status');
+  const m=document.getElementById('mode');
+  m.textContent=s.mode==='online_web'?'WEB EN LÍNEA':s.mode==='offline_web'?'WEB CAÍDA · MODO LOCAL':s.mode;
+  m.className='pill '+(s.mode==='online_web'?'online':s.mode==='offline_web'?'offline':'unknown');
+  document.getElementById('status').innerHTML=
+    `Web: <b>${s.webReachable===null?'?':s.webReachable?'OK':'CAÍDA'}</b> (${s.webBase})<br>`+
+    `Local: <b>${s.localReachable===null?'?':s.localReachable?'OK':'CAÍDO'}</b> (${s.localBase})<br>`+
+    `Último push: ${s.lastPushAt||'—'} · Último pull: ${s.lastPullAt||'—'}`;
+  const ob=await j('/agent/outbox');
+  const pend=ob.items.filter(x=>x.status==='pending');
+  document.getElementById('pendingN').textContent=pend.length;
+  document.getElementById('outbox').innerHTML=pend.length?('<table><tr><th>Tipo</th><th>UUID</th><th>Intentos</th></tr>'+
+    pend.map(x=>`<tr><td>${x.type}</td><td><code>${(x.sync_uuid||x.id||'').slice(0,13)}…</code></td><td>${x.attempts}</td></tr>`).join('')+'</table>'):'Cola vacía. Todo sincronizado.';
+  const cf=await j('/agent/conflicts');
+  document.getElementById('confN').textContent=cf.items.length;
+  document.getElementById('conflicts').innerHTML=cf.items.length?('<table><tr><th>Tipo</th><th>Detalle</th><th></th></tr>'+
+    cf.items.map(c=>`<tr><td>${c.kind}</td><td>${c.sync_uuid||''}<br><small>${(c.message||'').slice(0,140)}</small></td><td><button onclick="resolve('${c.sync_uuid}')">Revisado</button></td></tr>`).join('')+'</table>')
+    :'Sin conflictos. El stock nunca quedó negativo y no hay facturas duplicadas.';
+  const lg=await j('/agent/log');
+  document.getElementById('log').textContent=(lg.lines||[]).join('\n');
+}
+async function syncNow(){
+  const b=document.getElementById('syncBtn');b.disabled=true;b.textContent='Sincronizando…';
+  try{await j('/agent/sync-now',{method:'POST'});}finally{b.disabled=false;b.textContent='Sincronizar ahora';load();}
+}
+async function resolve(uuid){
+  await j('/agent/resolve-conflict',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sync_uuid:uuid})});
+  load();
+}
+load();setInterval(load,5000);
+</script>
+</body>
+</html>

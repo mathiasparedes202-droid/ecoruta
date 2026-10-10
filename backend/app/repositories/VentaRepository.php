@@ -137,6 +137,21 @@ class VentaRepository
         return array_map(fn($data) => new Venta($data), $rows);
     }
 
+    public function findBySyncUuid(string $uuid): ?Venta
+    {
+        if (!$this->columnExists('venta', 'sync_uuid')) {
+            return null;
+        }
+        $query = "SELECT v.*, c.razon_social AS nombre_cliente, c.ruc_ci AS ruc_ci
+                  FROM venta v
+                  JOIN cliente c ON v.id_cliente = c.id_cliente
+                  WHERE v.sync_uuid = :u LIMIT 1";
+        $stmt = $this->db->prepare($query);
+        $stmt->execute(['u' => $uuid]);
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $data ? new Venta($data) : null;
+    }
+
     public function getNextNumeroFactura(): string
     {
         $query = "SELECT numero_factura FROM venta WHERE numero_factura IS NOT NULL AND numero_factura <> '' ORDER BY id_venta DESC LIMIT 1";
@@ -179,6 +194,26 @@ class VentaRepository
         try {
             $this->db->beginTransaction();
 
+            // Columnas de sync (migración 44): solo se incluyen si existen,
+            // para no romper instalaciones que aún no migraron.
+            $hasSyncUuid = $this->columnExists('venta', 'sync_uuid');
+            $hasOrigen = $this->columnExists('venta', 'origen');
+
+            $extraCols = '';
+            $extraVals = '';
+            if ($hasSyncUuid) {
+                $extraCols .= ',
+                        sync_uuid';
+                $extraVals .= ',
+                        :sync_uuid';
+            }
+            if ($hasOrigen) {
+                $extraCols .= ',
+                        origen';
+                $extraVals .= ',
+                        :origen';
+            }
+
             $query = "INSERT INTO venta (
                         id_cliente,
                         id_pedido,
@@ -203,7 +238,7 @@ class VentaRepository
                         liquidacion_iva_5,
                         liquidacion_iva_10,
                         total_liquidacion,
-                        creado_por
+                        creado_por{$extraCols}
                       ) VALUES (
                         :id_cliente,
                         :id_pedido,
@@ -228,13 +263,12 @@ class VentaRepository
                         :liquidacion_iva_5,
                         :liquidacion_iva_10,
                         :total_liquidacion,
-                        :creado_por
+                        :creado_por{$extraVals}
                       )";
 
             $estadoFactura = $this->normalizeEstadoFactura($ventaData['estado_factura'] ?? 'Vigente');
 
-            $stmt = $this->db->prepare($query);
-            $success = $stmt->execute([
+            $params = [
                 'id_cliente' => $ventaData['id_cliente'],
                 'id_pedido' => $ventaData['id_pedido'] ?? null,
                 'numero_factura' => $ventaData['numero_factura'],
@@ -259,7 +293,16 @@ class VentaRepository
                 'liquidacion_iva_10' => $ventaData['liquidacion_iva_10'] ?? 0,
                 'total_liquidacion' => $ventaData['total_liquidacion'] ?? 0,
                 'creado_por' => $ventaData['creado_por'],
-            ]);
+            ];
+            if ($hasSyncUuid) {
+                $params['sync_uuid'] = $ventaData['sync_uuid'] ?? null;
+            }
+            if ($hasOrigen) {
+                $params['origen'] = $ventaData['origen'] ?? 'web';
+            }
+
+            $stmt = $this->db->prepare($query);
+            $success = $stmt->execute($params);
 
             if (!$success) {
                 $err = $stmt->errorInfo();

@@ -1,0 +1,17 @@
+{
+  "name": "ecoruta-sync-agent",
+  "version": "1.0.0",
+  "description": "Intermediario PC entre servidor web y local: proxy offline-first con outbox idempotente, anti-duplicado de facturas y anti-stock-negativo.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mysql2": "^3.9.7",
+    "dotenv": "^16.4.5"
+  }
+}

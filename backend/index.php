@@ -221,6 +221,40 @@ if ($method === 'GET' && $path === '/api/metrics') {
     getDailyMetrics();
 }
 
+// Sincronización offline (intermediario PC en sync-agent/).
+// El SyncController vive en app/ y comparte lógica con routes/api.php;
+// aquí se expone en el router que realmente atiende las peticiones.
+if ($method === 'GET' && $path === '/api/sync/health') {
+    $syncCtl = new \App\Controllers\SyncController(new \Core\Request(), new \Core\Response());
+    $syncCtl->health();
+}
+
+if (($method === 'GET' && $path === '/api/sync/pull') || ($method === 'POST' && $path === '/api/sync/push')) {
+    $expectedSyncKey = (string) ($_ENV['SYNC_API_KEY'] ?? '');
+    $givenSyncKey = $_SERVER['HTTP_X_SYNC_KEY']
+        ?? $_SERVER['REDIRECT_HTTP_X_SYNC_KEY']
+        ?? (function () {
+            if (!function_exists('getallheaders')) {
+                return null;
+            }
+            foreach (getallheaders() as $name => $value) {
+                if (strtolower($name) === 'x-sync-key') {
+                    return $value;
+                }
+            }
+            return null;
+        })();
+    if ($expectedSyncKey === '' || $givenSyncKey === null || !hash_equals($expectedSyncKey, (string) $givenSyncKey)) {
+        sendJson(['success' => false, 'message' => 'No autorizado (X-Sync-Key inválido)'], 401);
+    }
+    $syncCtl = new \App\Controllers\SyncController(new \Core\Request(), new \Core\Response());
+    if ($method === 'GET') {
+        $syncCtl->pull();
+    } else {
+        $syncCtl->push();
+    }
+}
+
 if ($method === 'PATCH' && $path === '/api/me/comercio') {
     editCurrentCommerce(requireAuth());
 }

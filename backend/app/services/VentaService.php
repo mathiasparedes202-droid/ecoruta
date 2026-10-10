@@ -54,6 +54,16 @@ class VentaService
 
     public function registrarVenta(array $data, int $usuarioId): int
     {
+        // Idempotencia sync (migración 44): si ya existe una venta con este
+        // sync_uuid, se devuelve sin duplicar. Hace seguro el reintento del agente.
+        $syncUuid = trim((string)($data['sync_uuid'] ?? ''));
+        if ($syncUuid !== '') {
+            $existente = $this->ventaRepo->findBySyncUuid($syncUuid);
+            if ($existente) {
+                return (int)$existente->id_venta;
+            }
+        }
+
         // Validaciones básicas
         $errores = [];
         $deliveryOption = $data['delivery_option'] ?? 'Retiro';
@@ -220,6 +230,8 @@ class VentaService
             'liquidacion_iva_10' => 0,
             'total_liquidacion' => 0,
             'creado_por' => $usuarioId,
+            'sync_uuid' => $syncUuid !== '' ? $syncUuid : null,
+            'origen' => isset($data['origen']) && in_array($data['origen'], ['local', 'web'], true) ? $data['origen'] : 'web',
         ];
 
         $ventaId = $this->ventaRepo->create($ventaData, $details);

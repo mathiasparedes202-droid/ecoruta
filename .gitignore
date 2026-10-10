@@ -5,3 +5,5 @@ node_modules/
 dist/
 coverage/
 .DS_Store
+# Estado local del sync-agent (cola, estado, logs de la PC)
+sync-agent/data/

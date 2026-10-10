@@ -180,4 +180,9 @@ $router->delete('/api/pedidos/produccion/{id}', [PedidoController::class, 'elimi
 // Reportes
 $router->get('/api/reportes/{section}', [ReporteController::class, 'show'], [$auth]);
 
+// Sincronización offline (intermediario PC). Health público, push/pull con X-Sync-Key o JWT.
+$router->get('/api/sync/health', [\App\Controllers\SyncController::class, 'health']);
+$router->get('/api/sync/pull', [\App\Controllers\SyncController::class, 'pull'], [\App\Middlewares\SyncAuthMiddleware::class]);
+$router->post('/api/sync/push', [\App\Controllers\SyncController::class, 'push'], [\App\Middlewares\SyncAuthMiddleware::class]);
+
 return $router;
