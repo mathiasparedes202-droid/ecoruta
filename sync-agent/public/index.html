@@ -26,6 +26,7 @@
   <strong>EcoRuta · Intermediario PC</strong>
   <span id="mode" class="pill unknown">…</span>
   <span style="flex:1"></span>
+  <button onclick="bootstrap()" title="Encolar el histórico local sin uuid para subirlo a la web (usar una vez)">Subir histórico</button>
   <button id="syncBtn" onclick="syncNow()">Sincronizar ahora</button>
 </header>
 <main>
@@ -71,6 +72,12 @@ async function syncNow(){
 }
 async function resolve(uuid){
   await j('/agent/resolve-conflict',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sync_uuid:uuid})});
+  load();
+}
+async function bootstrap(){
+  if(!confirm('Va a encolar TODOS los pedidos locales sin código sync para subirlos a la web. Si un mismo pedido real ya existe en la web, se duplicará. ¿Continuar?'))return;
+  const r=await j('/agent/bootstrap',{method:'POST'});
+  alert(r.success?`Encolados: ${r.enqueued}. Se subirán en el próximo ciclo.`:`Error: ${r.message}`);
   load();
 }
 load();setInterval(load,5000);

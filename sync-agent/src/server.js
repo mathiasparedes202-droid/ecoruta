@@ -1,8 +1,9 @@
 import express from 'express';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
-import { loadOutbox, loadState, saveState, tailLog, log } from './store.js';
+import { loadOutbox, loadState, saveState, tailLog, log, enqueueOp } from './store.js';
 import { proxy } from './proxy.js';
 import { runCycle, refreshHealth, runPush, runPull } from './sync.js';
 
@@ -69,6 +70,33 @@ app.post('/agent/resolve-conflict', (req, res) => {
   s.conflicts = (s.conflicts || []).filter((c) => c.sync_uuid !== sync_uuid);
   saveState(s);
   res.json({ success: true });
+});
+
+// Carga inicial: encola TODOS los pedidos locales sin sync_uuid (histórico
+// creado antes del agente) para subirlos a la web en el próximo push.
+// Les asigna uuid + origen local. Usar UNA vez; si el mismo pedido real ya
+// existe en la web con otro uuid, se duplicará: revisar primero.
+app.post('/agent/bootstrap', async (_req, res) => {
+  try {
+    const { localPool } = await import('./localDb.js');
+    const [rows] = await localPool().query(
+      "SELECT * FROM pedidos WHERE sync_uuid IS NULL OR sync_uuid = ''"
+    );
+    let n = 0;
+    for (const r of rows) {
+      const uuid = randomUUID();
+      await localPool().query(
+        "UPDATE pedidos SET sync_uuid = ?, origen = 'local' WHERE id_pedido = ?",
+        [uuid, r.id_pedido]
+      );
+      enqueueOp({ type: 'pedido', sync_uuid: uuid, snapshot: { ...r, sync_uuid: uuid, origen: 'local' } });
+      n++;
+    }
+    log(`[bootstrap] ${n} pedido(s) histórico(s) encolados para subir a la web`);
+    res.json({ success: true, enqueued: n });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 app.listen(config.port, () => {
