@@ -18,6 +18,22 @@ export function localPool() {
   return pool;
 }
 
+// Asegura que el pedido local tenga sync_uuid (filas viejas no lo tienen):
+// lo genera y estampa para poder referenciarlo en el outbox/replay.
+export async function ensurePedidoUuid(idPedido) {
+  const row = await fetchLocalPedido(Number(idPedido));
+  if (!row) return null;
+  if (row.sync_uuid && String(row.sync_uuid).length >= 8) return String(row.sync_uuid);
+  const { randomUUID } = await import('node:crypto');
+  const uuid = randomUUID();
+  try {
+    await localPool().query('UPDATE pedidos SET sync_uuid = ? WHERE id_pedido = ?', [uuid, row.id_pedido]);
+  } catch {
+    return null;
+  }
+  return uuid;
+}
+
 // Lee un pedido local completo para encolarlo al outbox.
 export async function fetchLocalPedido(idPedido) {
   const db = localPool();

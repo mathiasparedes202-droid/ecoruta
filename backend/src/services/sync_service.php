@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../middleware/cors.php';
+require_once __DIR__ . '/orders_service.php';
 
 /**
  * Sync delivery (pedidos) con funciones planas, SIN autoload de Composer.
@@ -113,11 +115,123 @@ function syncPushPedidos(array $items, int $usuarioId): array
     return $results;
 }
 
+/**
+ * Re-aplica cambios hechos offline (pago, estado, asignación, cancelación,
+ * edición) buscados por sync_uuid. Usa las MISMAS funciones y reglas que los
+ * endpoints normales, con credencial de sistema (rol admin): el cambio ya fue
+ * autorizado en local por el usuario logueado; el agente solo lo transporta.
+ *
+ * Pre-chequeos para no abortar el lote (las funciones hacen exit en 422):
+ * si el pedido está entregado/cancelado y la acción no aplica, se devuelve
+ * error controlado por item en vez de llamar.
+ */
+function syncPushReplays(array $items, int $usuarioId): array
+{
+    $pdo = database();
+    if (!syncTableExists($pdo, 'pedidos')) {
+        throw new RuntimeException('Esta base no tiene pedidos para sincronizar');
+    }
+    if ($usuarioId <= 0) {
+        $usuarioId = syncSystemUserId($pdo);
+    }
+    if ($usuarioId <= 0) {
+        return array_map(
+            fn($it) => ['sync_uuid' => trim((string) (((array) $it)['sync_uuid'] ?? '')), 'status' => 'error', 'message' => 'Sin usuario sistema en el servidor'],
+            $items
+        );
+    }
+    $claims = (object) ['sub' => $usuarioId, 'rol' => 3];
+
+    $results = [];
+    foreach ($items as $item) {
+        $results[] = syncApplyOneReplay($pdo, (array) $item, $claims);
+    }
+    return $results;
+}
+
+function syncApplyOneReplay(PDO $pdo, array $rep, object $claims): array
+{
+    $uuid = trim((string) ($rep['sync_uuid'] ?? ''));
+    $action = (string) ($rep['action'] ?? '');
+    $payload = is_array($rep['payload'] ?? null) ? $rep['payload'] : [];
+    if ($uuid === '' || strlen($uuid) < 8) {
+        return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'sync_uuid requerido'];
+    }
+    if (!in_array($action, ['pago', 'estado', 'assign', 'cancel', 'editar'], true)) {
+        return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => "Acción desconocida: $action"];
+    }
+
+    try {
+        $st = $pdo->prepare('SELECT id_pedido, id_estado, pagado FROM pedidos WHERE sync_uuid = :u LIMIT 1');
+        $st->execute(['u' => $uuid]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            // La creación viaja en el mismo lote antes que los replays; si aún
+            // no está, el próximo ciclo lo encontrará (las creaciones van primero).
+            return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'El pedido aún no está en el servidor (se aplica tras la creación)'];
+        }
+        $id = (int) $row['id_pedido'];
+        $estado = (int) $row['id_estado'];
+        $yaPagado = (int) $row['pagado'] === 1;
+
+        // Pre-chequeos (evitan los exit 422 de las funciones y los vuelven resultados).
+        if ($estado === 4 && in_array($action, ['cancel', 'editar', 'assign'], true)) {
+            return ['sync_uuid' => $uuid, 'status' => 'error', 'id_pedido' => $id, 'message' => 'El pedido ya fue entregado y no admite ese cambio'];
+        }
+        if ($estado === 5 && in_array($action, ['pago', 'cancel', 'assign', 'editar'], true)) {
+            return ['sync_uuid' => $uuid, 'status' => 'error', 'id_pedido' => $id, 'message' => 'El pedido está cancelado y no admite ese cambio'];
+        }
+        if ($action === 'pago' && array_key_exists('pagado', $payload)) {
+            $quierePagar = filter_var($payload['pagado'], FILTER_VALIDATE_BOOLEAN);
+            if (!$quierePagar && $yaPagado && $estado === 4) {
+                // Regla de dinero: entregado+pagado no se revierte.
+                return ['sync_uuid' => $uuid, 'status' => 'conflicto_pago', 'id_pedido' => $id, 'message' => 'El pedido ya fue entregado y pagado; no se puede revertir'];
+            }
+            if ($quierePagar && $yaPagado) {
+                return ['sync_uuid' => $uuid, 'status' => 'duplicado', 'id_pedido' => $id, 'message' => 'El pedido ya figuraba pagado (reintento seguro)'];
+            }
+        }
+        if ($action === 'cancel' && mb_strlen(trim((string) ($payload['motivo'] ?? ''))) < 5) {
+            return ['sync_uuid' => $uuid, 'status' => 'error', 'id_pedido' => $id, 'message' => 'Cancelación sin motivo válido'];
+        }
+
+        switch ($action) {
+            case 'pago':
+                updateOrderPayment($id, $claims, $payload);
+                break;
+            case 'estado':
+                updateOrderStatus($id, $payload);
+                break;
+            case 'assign':
+                assignOrderToRepartidor($id, $payload);
+                break;
+            case 'cancel':
+                cancelOrder($id, $claims, $payload);
+                break;
+            case 'editar':
+                updateOrder($id, $claims, $payload);
+                break;
+        }
+
+        return ['sync_uuid' => $uuid, 'status' => 'applied', 'id_pedido' => $id, 'message' => "Cambio '$action' aplicado en el servidor"];
+    } catch (Throwable $e) {
+        return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => $e->getMessage()];
+    }
+}
+
 function syncApplyOnePedido(PDO $pdo, array $p, int $usuarioId): array
 {
     $uuid = trim((string) ($p['sync_uuid'] ?? ''));
     if ($uuid === '' || strlen($uuid) < 8) {
         return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'sync_uuid requerido'];
+    }
+
+    // Normaliza fechas (el agente puede mandar ISO '...T...Z'; MySQL exige 'Y-m-d H:i:s').
+    foreach (['fecha_solicitud', 'fecha_pago'] as $fk) {
+        if (isset($p[$fk]) && is_string($p[$fk])) {
+            $norm = str_replace('T', ' ', substr($p[$fk], 0, 19));
+            $p[$fk] = strtotime($norm) !== false ? date('Y-m-d H:i:s', strtotime($norm)) : null;
+        }
     }
 
     try {

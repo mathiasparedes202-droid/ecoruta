@@ -72,6 +72,26 @@ export function log(line) {
   fs.appendFileSync(LOG_FILE, msg);
   console.log(msg.trim());
 }
+
+// mysql2 devuelve DATETIME como Date; JSON lo vuelve ISO '...+T...+Z' y MySQL
+// en modo estricto lo rechaza. Esto normaliza cualquier snapshot a formato
+// SQL 'YYYY-MM-DD HH:MM:SS' antes de encolar.
+export function serDates(value) {
+  if (value instanceof Date) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${value.getFullYear()}-${p(value.getMonth() + 1)}-${p(value.getDate())} ${p(value.getHours())}:${p(value.getMinutes())}:${p(value.getSeconds())}`;
+  }
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) {
+    return value.replace('T', ' ').slice(0, 19);
+  }
+  if (Array.isArray(value)) return value.map(serDates);
+  if (value && typeof value === 'object') {
+    const o = {};
+    for (const k of Object.keys(value)) o[k] = serDates(value[k]);
+    return o;
+  }
+  return value;
+}
 export function tailLog(n = 200) {
   try {
     const lines = fs.readFileSync(LOG_FILE, 'utf8').trim().split('\n');

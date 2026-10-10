@@ -20,22 +20,33 @@ export async function runPush() {
   const s = loadState();
   if (!s.webReachable) return { skipped: 'web no alcanzable' };
   const items = loadOutbox().filter(
-    (x) => x.status === 'pending' && (x.type === 'pedido' || x.type === 'venta')
+    (x) => x.status === 'pending' && (x.type === 'pedido' || x.type === 'venta' || x.type === 'replay_pedido')
   );
   if (!items.length) return { pushed: 0 };
 
   const pedidos = items.filter((x) => x.type === 'pedido').map((x) => x.snapshot);
   const ventas = items.filter((x) => x.type === 'venta').map((x) => x.snapshot);
-  log(`[push] subiendo ${pedidos.length} pedido(s) + ${ventas.length} venta(s) a la web...`);
+  const replays = items
+    .filter((x) => x.type === 'replay_pedido')
+    .map((x) => ({ sync_uuid: x.sync_uuid, action: x.action, payload: x.payload }));
+  log(`[push] subiendo ${pedidos.length} pedido(s) + ${ventas.length} venta(s) + ${replays.length} cambio(s) a la web...`);
   let resp;
   try {
-    resp = await webPush({ pedidos, ventas });
+    resp = await webPush({ pedidos, ventas, replays });
   } catch (e) {
+    // Fallo de transporte con web alcanzable: transitorio, no se penaliza.
     log(`[push] fallo de red: ${e.message}`);
     return { error: e.message };
   }
   if (!resp?.success) {
+    // 401 = SYNC_API_KEY mal o ausente en la web: problema de configuración,
+    // no de datos. Se reintenta siempre y se avisa fuerte, sin aparcar la cola.
+    if (resp?._http === 401 || /autorizado/i.test(resp?.message || '')) {
+      log('[push] 401 No autorizado: revisa SYNC_API_KEY en la web (Render > Environment). La cola se conserva.');
+      return { error: 'X-Sync-Key inválido en la web' };
+    }
     log(`[push] web rechazó lote: ${JSON.stringify(resp)}`);
+    bumpAttempts(items);
     return { error: resp?.message || 'push rechazado' };
   }
 
@@ -67,8 +78,17 @@ export async function runPush() {
       pushConflict({ at: new Date().toISOString(), kind: r.status === 'conflicto_pago' ? 'pago' : 'stock', sync_uuid: r.sync_uuid, message: r.message });
       log(`[push] CONFLICTO ${r.status} ${r.sync_uuid}: ${r.message}`);
     } else {
-      updateOp(op.id, { attempts: op.attempts + 1, last_error: r.message });
-      log(`[push] error ${r.sync_uuid}: ${r.message}`);
+      const n = (op.attempts || 0) + 1;
+      // Anti-atasco: tras 5 ciclos fallando con la web alcanzable, el item
+      // pasa a conflicto para revisión manual en vez de reintentarse eterno.
+      if (n >= 5) {
+        updateOp(op.id, { status: 'conflict', attempts: n, last_error: r.message });
+        pushConflict({ at: new Date().toISOString(), kind: 'reintentos', sync_uuid: r.sync_uuid, message: r.message });
+        log(`[push] ${r.sync_uuid} -> conflicto tras ${n} intentos: ${r.message}`);
+      } else {
+        updateOp(op.id, { attempts: n, last_error: r.message });
+        log(`[push] error ${r.sync_uuid} (intento ${n}): ${r.message}`);
+      }
     }
   }
   s.lastPushAt = new Date().toISOString();
@@ -124,4 +144,18 @@ export async function runCycle() {
   const push = await runPush();
   const pull = await runPull();
   return { push, pull };
+}
+
+// Suma un intento a los ops involucrados cuando el lote ni siquiera pudo
+// procesarse (red caída a mitad o lote rechazado con web alcanzable).
+function bumpAttempts(items) {
+  for (const op of items) {
+    const n = (op.attempts || 0) + 1;
+    if (n >= 5) {
+      updateOp(op.id, { status: 'conflict', attempts: n, last_error: 'lote no procesado 5 veces' });
+      pushConflict({ at: new Date().toISOString(), kind: 'reintentos', sync_uuid: op.sync_uuid, message: 'El lote no pudo procesarse 5 veces' });
+    } else {
+      updateOp(op.id, { attempts: n });
+    }
+  }
 }

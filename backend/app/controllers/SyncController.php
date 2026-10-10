@@ -449,6 +449,14 @@ class SyncController extends Controller
             return ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'sync_uuid requerido'];
         }
 
+        // Normaliza fechas (el agente puede mandar ISO '...T...Z'; MySQL exige 'Y-m-d H:i:s').
+        foreach (['fecha_solicitud', 'fecha_pago'] as $fk) {
+            if (isset($p[$fk]) && is_string($p[$fk])) {
+                $norm = str_replace('T', ' ', substr($p[$fk], 0, 19));
+                $p[$fk] = strtotime($norm) !== false ? date('Y-m-d H:i:s', strtotime($norm)) : null;
+            }
+        }
+
         try {
             if ($this->colExists('pedidos', 'sync_uuid')) {
                 $st = $this->db->prepare('SELECT id_pedido, pagado, id_estado FROM pedidos WHERE sync_uuid = :u LIMIT 1');

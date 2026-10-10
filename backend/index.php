@@ -283,13 +283,18 @@ if (($method === 'GET' && $path === '/api/sync/pull') || ($method === 'POST' && 
             $body = requestBody();
             $pedidos = $body['pedidos'] ?? [];
             $ventas = $body['ventas'] ?? $body['items'] ?? [];
-            if (!is_array($pedidos) || !is_array($ventas)) {
-                sendJson(['success' => false, 'message' => 'pedidos y ventas deben ser arreglos'], 422);
+            $replays = $body['replays'] ?? [];
+            if (!is_array($pedidos) || !is_array($ventas) || !is_array($replays)) {
+                sendJson(['success' => false, 'message' => 'pedidos, ventas y replays deben ser arreglos'], 422);
             }
-            if (count($pedidos) + count($ventas) > 100) {
+            if (count($pedidos) + count($ventas) + count($replays) > 100) {
                 sendJson(['success' => false, 'message' => 'Máximo 100 registros por lote'], 422);
             }
+            // Orden: creaciones primero (los replays los buscan por uuid).
             $results = syncPushPedidos($pedidos, 0);
+            foreach (syncPushReplays($replays, 0) as $r) {
+                $results[] = $r;
+            }
             // Tienda solo donde exista el módulo (clase + tabla); si no, error controlado por item.
             foreach ($ventas as $v) {
                 $uuid = trim((string) (((array) $v)['sync_uuid'] ?? ''));

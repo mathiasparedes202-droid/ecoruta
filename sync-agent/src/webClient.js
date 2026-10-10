@@ -50,17 +50,18 @@ export async function forward(base, req, extraHeaders = {}) {
   return { status: r.status, json, text, contentType: r.headers.get('content-type') || '' };
 }
 
-export async function webPush({ pedidos = [], ventas = [] }) {
+export async function webPush({ pedidos = [], ventas = [], replays = [] }) {
   const r = await fetchTimeout(
     `${config.webBase}/api/sync/push`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sync-key': config.webSyncKey },
-      body: JSON.stringify({ pedidos, ventas }),
+      body: JSON.stringify({ pedidos, ventas, replays }),
     },
     60000
   );
-  return r.json();
+  const body = await r.json().catch(() => ({}));
+  return { ...body, _http: r.status };
 }
 
 export async function webPull(since, limit = 200) {
@@ -73,13 +74,13 @@ export async function webPull(since, limit = 200) {
 
 // Aplica en LOCAL lo que vino de la web usando el MISMO endpoint idempotente.
 // Así la lógica anti-duplicado vive en un solo lugar (PHP).
-export async function localPush({ pedidos = [], ventas = [] }) {
+export async function localPush({ pedidos = [], ventas = [], replays = [] }) {
   const r = await fetchTimeout(
     `${config.localBase}/api/sync/push`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sync-key': config.localSyncKey },
-      body: JSON.stringify({ pedidos, ventas }),
+      body: JSON.stringify({ pedidos, ventas, replays }),
     },
     60000
   );

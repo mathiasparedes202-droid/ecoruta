@@ -226,6 +226,28 @@ function createOrder(array $body): array
 
     $newId = (int) $pdo->lastInsertId();
 
+    // Idempotencia sync (migración 45): si el pedido nació con sync_uuid
+    // (vía agente offline), se estampa para que el push no lo duplique.
+    $syncUuid = trim((string) ($body['sync_uuid'] ?? ''));
+    if ($syncUuid !== '' && strlen($syncUuid) >= 8) {
+        try {
+            $hasUuid = (bool) $pdo->query(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedidos' AND COLUMN_NAME = 'sync_uuid'"
+            )->fetchColumn();
+            if ($hasUuid) {
+                $hasOrigen = (bool) $pdo->query(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pedidos' AND COLUMN_NAME = 'origen'"
+                )->fetchColumn();
+                $stamp = $pdo->prepare(
+                    'UPDATE pedidos SET sync_uuid = :u' . ($hasOrigen ? ", origen = 'local'" : '') . ' WHERE id_pedido = :id'
+                );
+                $stamp->execute(['u' => $syncUuid, 'id' => $newId]);
+            }
+        } catch (Throwable $e) {
+            // No fatal: el pedido ya quedó creado; el agente usa el body como respaldo.
+        }
+    }
+
     // Registrar en historial_estados
     $userId = isset($body['id_usuario']) ? (int) $body['id_usuario'] : 1;
     $history = $pdo->prepare(
@@ -251,6 +273,7 @@ function createOrder(array $body): array
 
     return [
         'id_pedido' => $newId,
+        'sync_uuid' => $syncUuid !== '' ? $syncUuid : null,
         'distancia_km' => $distance,
         'co2_ahorrado_kg' => $co2,
         'tarifa_ecologica' => $fee,

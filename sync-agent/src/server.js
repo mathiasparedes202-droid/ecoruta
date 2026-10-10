@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
-import { loadOutbox, loadState, saveState, tailLog, log, enqueueOp } from './store.js';
+import { loadOutbox, loadState, saveState, tailLog, log, enqueueOp, saveOutbox, serDates } from './store.js';
 import { proxy } from './proxy.js';
 import { runCycle, refreshHealth, runPush, runPull } from './sync.js';
 
@@ -89,7 +89,7 @@ app.post('/agent/bootstrap', async (_req, res) => {
         "UPDATE pedidos SET sync_uuid = ?, origen = 'local' WHERE id_pedido = ?",
         [uuid, r.id_pedido]
       );
-      enqueueOp({ type: 'pedido', sync_uuid: uuid, snapshot: { ...r, sync_uuid: uuid, origen: 'local' } });
+      enqueueOp({ type: 'pedido', sync_uuid: uuid, snapshot: serDates({ ...r, sync_uuid: uuid, origen: 'local' }) });
       n++;
     }
     log(`[bootstrap] ${n} pedido(s) histórico(s) encolados para subir a la web`);
@@ -102,7 +102,42 @@ app.post('/agent/bootstrap', async (_req, res) => {
 app.listen(config.port, () => {
   log(`[agent] panel + proxy en http://localhost:${config.port} (frontend -> este puerto)`);
   log(`[agent] local=${config.localBase} web=${config.webBase}`);
+  upgradeLegacyReplays().catch((e) => log(`[upgrade] ${e.message}`));
 });
+
+// Migra replays genéricos viejos ({method, path, body} sin procesador) a
+// replay_pedido estructurados cuando el path es una mutación de pedido
+// conocida. Idempotente: los ya convertidos no se tocan.
+async function upgradeLegacyReplays() {
+  const { REPLAY_WRITES } = await import('./proxy.js');
+  const { ensurePedidoUuid } = await import('./localDb.js');
+  const items = loadOutbox();
+  let changed = 0;
+  for (const it of items) {
+    if (it.type !== 'replay' || !it.path) continue;
+    const clean = String(it.path).split('?')[0];
+    const hit = REPLAY_WRITES.map((w) => ({ ...w, m: clean.match(w.re) })).find((w) => w.m);
+    if (!hit) continue;
+    try {
+      const uuid = await ensurePedidoUuid(hit.m[1]);
+      if (!uuid) continue;
+      it.type = 'replay_pedido';
+      it.sync_uuid = uuid;
+      it.action = hit.action;
+      it.payload = it.body || {};
+      delete it.method;
+      delete it.path;
+      delete it.body;
+      changed++;
+    } catch {
+      continue;
+    }
+  }
+  if (changed) {
+    saveOutbox(items);
+    log(`[upgrade] ${changed} replay(s) genérico(s) convertidos a replay_pedido`);
+  }
+}
 
 // Ciclo automático
 setInterval(async () => {
