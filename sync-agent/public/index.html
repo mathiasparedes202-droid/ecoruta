@@ -26,6 +26,7 @@
   <strong>EcoRuta · Intermediario PC</strong>
   <span id="mode" class="pill unknown">…</span>
   <span style="flex:1"></span>
+  <button onclick="syncMissing()" title="Encolar los pedidos locales que no están en la web (convergencia sin duplicar)">Subir faltantes</button>
   <button onclick="bootstrap()" title="Encolar el histórico local sin uuid para subirlo a la web (usar una vez)">Subir histórico</button>
   <button id="syncBtn" onclick="syncNow()">Sincronizar ahora</button>
 </header>
@@ -61,7 +62,7 @@ async function load(){
   const cf=await j('/agent/conflicts');
   document.getElementById('confN').textContent=cf.items.length;
   document.getElementById('conflicts').innerHTML=cf.items.length?('<table><tr><th>Tipo</th><th>Detalle</th><th></th></tr>'+
-    cf.items.map(c=>`<tr><td>${c.kind}</td><td>${c.sync_uuid||''}<br><small>${(c.message||'').slice(0,140)}</small></td><td><button onclick="resolve('${c.sync_uuid}')">Revisado</button></td></tr>`).join('')+'</table>')
+    cf.items.map(c=>`<tr><td>${c.kind}</td><td>${c.sync_uuid||''}<br><small>${(c.message||'').slice(0,140)}</small></td><td><button onclick="retry('${c.sync_uuid}')">Reintentar</button> <button onclick="resolve('${c.sync_uuid}')">Revisado</button></td></tr>`).join('')+'</table>')
     :'Sin conflictos. Ningún pedido se duplicó y ningún pago se revirtió.';
   const lg=await j('/agent/log');
   document.getElementById('log').textContent=(lg.lines||[]).join('\n');
@@ -72,6 +73,16 @@ async function syncNow(){
 }
 async function resolve(uuid){
   await j('/agent/resolve-conflict',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sync_uuid:uuid})});
+  load();
+}
+async function retry(uuid){
+  await j('/agent/retry-conflict',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sync_uuid:uuid})});
+  load();
+}
+async function syncMissing(){
+  if(!confirm('Va a encolar los pedidos locales que NO están en la web. No duplica: la web responde duplicado si el uuid ya existe. ¿Continuar?'))return;
+  const r=await j('/agent/sync-missing',{method:'POST'});
+  alert(r.success?`Faltantes encolados: ${r.faltantes} (web: ${r.web}, locales: ${r.locales}). Se subirán en el próximo ciclo.`:`Error: ${r.message}`);
   load();
 }
 async function bootstrap(){

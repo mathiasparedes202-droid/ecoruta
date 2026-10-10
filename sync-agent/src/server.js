@@ -63,8 +63,7 @@ app.post('/agent/sync-now', async (_req, res) => {
   }
 });
 app.post('/agent/resolve-conflict', (req, res) => {
-  // Marca un conflicto como revisado (no reintenta solo: el operador decide
-  // anular la venta local o ajustar stock y reencolar manualmente).
+  // Marca un conflicto como revisado (el operador ya lo resolvió a mano).
   const { sync_uuid } = req.body || {};
   const s = loadState();
   s.conflicts = (s.conflicts || []).filter((c) => c.sync_uuid !== sync_uuid);
@@ -72,6 +71,62 @@ app.post('/agent/resolve-conflict', (req, res) => {
   res.json({ success: true });
 });
 
+// Reintenta un conflicto: lo vuelve a pendiente (ej. un error de formato
+// viejo que el servidor ya sabe normalizar). Si vuelve a fallar 5 veces,
+// regresa a conflicto solo.
+app.post('/agent/retry-conflict', async (req, res) => {
+  try {
+    const { sync_uuid } = req.body || {};
+    const { updateOp } = await import('./store.js');
+    const items = loadOutbox();
+    const it = items.find((x) => x.sync_uuid === sync_uuid && x.status === 'conflict');
+    if (!it) return res.status(404).json({ success: false, message: 'Conflicto no encontrado en la cola' });
+    updateOp(it.id, { status: 'pending', attempts: 0, last_error: null });
+    log(`[panel] conflicto ${sync_uuid} reencolado para reintento`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// Convergencia: encola los pedidos locales cuyo uuid NO está en la web
+// (creados directo en local o que nunca subieron). No duplica: la web
+// responde `duplicado` si el uuid ya existe allá.
+app.post('/agent/sync-missing', async (_req, res) => {
+  try {
+    const { webPull } = await import('./webClient.js');
+    const { localPool } = await import('./localDb.js');
+    // Traer todos los uuid de la web (paginado)
+    const webUuids = new Set();
+    let since = '2000-01-01 00:00:00';
+    for (let page = 0; page < 20; page++) {
+      const pull = await webPull(since, 500);
+      if (!pull?.success) {
+        return res.status(502).json({ success: false, message: pull?.message || 'la web no devolvió el pull' });
+      }
+      for (const p of pull.data?.pedidos || []) {
+        if (p.sync_uuid) webUuids.add(p.sync_uuid);
+      }
+      if ((pull.data?.pedidos || []).length < 500) break;
+      since = pull.max_ts || since;
+    }
+    const [rows] = await localPool().query(
+      "SELECT * FROM pedidos WHERE sync_uuid IS NOT NULL AND sync_uuid <> ''"
+    );
+    const items = loadOutbox();
+    let n = 0;
+    for (const r of rows) {
+      if (webUuids.has(r.sync_uuid)) continue;
+      if (items.some((x) => x.sync_uuid === r.sync_uuid && x.status === 'pending')) continue;
+      enqueueOp({ type: 'pedido', sync_uuid: r.sync_uuid, snapshot: serDates({ ...r }) });
+      n++;
+    }
+    log(`[sync-missing] ${n} pedido(s) locales faltantes en la web, encolados`);
+    res.json({ success: true, faltantes: n, web: webUuids.size, locales: rows.length });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 // Carga inicial: encola TODOS los pedidos locales sin sync_uuid (histórico
 // creado antes del agente) para subirlos a la web en el próximo push.
 // Les asigna uuid + origen local. Usar UNA vez; si el mismo pedido real ya
