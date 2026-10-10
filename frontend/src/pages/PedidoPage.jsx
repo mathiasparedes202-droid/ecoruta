@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { createOrder, getStoredDestinations, saveStoredDestination, removeStoredDestination } from '../services/orderService.js';
 import { fetchClientes } from '../services/clientesService.js';
-import { PARAGUAY_BOUNDS, PARAGUAY_CENTER, inParaguay, boundedNominatim } from '../lib/geografia.js';
+import { PARAGUAY_BOUNDS, PARAGUAY_CENTER, inParaguay, boundedNominatim, haversineKm, OFFLINE_ROAD_FACTOR } from '../lib/geografia.js';
 import { toastSuccess, toastError, alertInfo } from '../lib/feedback.js';
 import { formatGs } from '../lib/format.js';
 
@@ -113,6 +113,27 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
   const [estimated, setEstimated] = useState(null);
   const [calculating, setCalculating] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // Modo offline: sin internet no hay mapas ni trazador de rutas (OSRM).
+  // Se activa solo al detectar la falta de conexión o el fallo de red del
+  // trazador; permite igual crear el pedido con distancia estimada
+  // (haversine × factor vial) y coordenadas manuales o guardadas.
+  const [offlineMode, setOfflineMode] = useState(
+    typeof navigator !== 'undefined' && navigator.onLine === false
+  );
+  const [manualLat, setManualLat] = useState('');
+  const [manualLng, setManualLng] = useState('');
+
+  useEffect(() => {
+    const goOff = () => setOfflineMode(true);
+    const goOn = () => setOfflineMode(false);
+    window.addEventListener('offline', goOff);
+    window.addEventListener('online', goOn);
+    return () => {
+      window.removeEventListener('offline', goOff);
+      window.removeEventListener('online', goOn);
+    };
+  }, []);
 
   const [savedDestinations, setSavedDestinations] = useState(() => getStoredDestinations());
 
@@ -308,7 +329,30 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
         }
       }
     } catch (err) {
-      setErrors((e) => ({ ...e, direccionDestino: 'No pudimos trazar la ruta. Mirá las ubicaciones y tu conexión, y volvé a intentar.' }));
+      // Sin red (TypeError de fetch) o navegador offline: respaldo local.
+      // La recta × factor vial permite seguir cobrando y registrando.
+      const sinRed = err instanceof TypeError || (typeof navigator !== 'undefined' && navigator.onLine === false);
+      if (sinRed && from && to) {
+        const straightKm = haversineKm(from.lat, from.lng, to.lat, to.lng);
+        const distanceKm = straightKm * OFFLINE_ROAD_FACTOR;
+        const co2Saved = distanceKm * DEFAULT_CO2_FACTOR;
+        setOfflineMode(true);
+        setEstimated({
+          distancia: `~${distanceKm.toFixed(2)} km (estimada offline)`,
+          co2: `${co2Saved.toFixed(3)} kg`,
+          _raw: { distanceKm, co2Saved, offline: true }
+        });
+        setErrors((e) => ({ ...e, direccionDestino: '' }));
+        // Línea recta de referencia (el mapa puede estar gris sin teselas)
+        clearRouteLayer();
+        try {
+          L.polyline([[from.lat, from.lng], [to.lat, to.lng]], { color: '#d97706', weight: 4, opacity: 0.8, dashArray: '8 8' }).addTo(routeLayerRef.current);
+        } catch {
+          /* mapa aún no listo */
+        }
+      } else {
+        setErrors((e) => ({ ...e, direccionDestino: 'No pudimos trazar la ruta. Mirá las ubicaciones y tu conexión, y volvé a intentar.' }));
+      }
     } finally {
       setCalculating(false);
     }
@@ -348,6 +392,30 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
     pickDestination(d.lat, d.lng, d.label);
     if (mapRef.current) {
       mapRef.current.setView([d.lat, d.lng], 15);
+    }
+  }
+
+  // Respaldo offline: fijar destino escribiendo latitud/longitud a mano
+  // (útil si el mapa está gris y no hay destinos frecuentes guardados).
+  function fixManualDestination() {
+    const lat = Number(String(manualLat).replace(',', '.'));
+    const lng = Number(String(manualLng).replace(',', '.'));
+    if (!isFinite(lat) || !isFinite(lng)) {
+      setErrors((e) => ({ ...e, direccionDestino: 'Escribí latitud y longitud válidas (ej: -23.40250, -57.44430)' }));
+      return;
+    }
+    if (!inParaguay(lat, lng)) {
+      setErrors((e) => ({ ...e, direccionDestino: 'EcoRuta solo entrega dentro de Paraguay. Elegí un punto en el país.' }));
+      return;
+    }
+    setErrors((e) => ({ ...e, direccionDestino: '' }));
+    pickDestination(lat, lng, form.direccionDestino || `Destino (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+    if (mapRef.current) {
+      try {
+        mapRef.current.setView([lat, lng], 15);
+      } catch {
+        /* mapa aún no listo */
+      }
     }
   }
 
@@ -420,6 +488,10 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
       return;
     }
     if (!estimated) {
+      if (offlineMode && !originCoords) {
+        alertInfo('Faltan coordenadas del comercio', 'Sin internet no podemos estimar la distancia: tu comercio no tiene latitud/longitud configuradas. Pedilas en "Mi comercio" cuando vuelva la conexión.');
+        return;
+      }
       alertInfo('Un momentito', 'Dejá que calculemos la distancia y la tarifa antes de confirmar.');
       return;
     }
@@ -492,6 +564,11 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
           <p className="eyebrow">Gestión de entregas</p>
           <h1>Nueva Solicitud de Entrega</h1>
           <p className="new-order__subtitle">Tocá el mapa para elegir adónde va la entrega (solo Paraguay). La ruta, la tarifa ecológica y el CO₂ ahorrado se calculan solos según la caja, el peso y la distancia.</p>
+          {offlineMode && (
+            <p className="new-order__offline-banner">
+              Sin internet: modo offline. La distancia es estimada, el pedido se guarda en esta PC y se sincroniza solo con la web al volver la conexión.
+            </p>
+          )}
         </div>
       </div>
 
@@ -620,11 +697,40 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
             className={`new-order-input ${errors.direccionDestino ? 'new-order-input--error' : ''}`}
             value={form.direccionDestino}
             onChange={(e) => set('direccionDestino', e.target.value)}
-            placeholder="Busca en el mapa o escribe la dirección"
-            readOnly
+            placeholder={offlineMode ? 'Escribe la dirección (sin internet no hay buscador)' : 'Busca en el mapa o escribe la dirección'}
+            readOnly={!offlineMode}
           />
           <span className="new-order-hint">El mapa limita la selección a Paraguay; solo se entregan envíos dentro del país.</span>
         </Field>
+
+        {offlineMode && (
+          <div className="new-order-offline-coords">
+            <span className="new-order-hint">Sin internet: el mapa está gris pero igual podés tocarlo, usar un destino frecuente/cliente, o escribir las coordenadas.</span>
+            <div className="new-order-grid">
+              <Field label="Latitud">
+                <input
+                  className="new-order-input"
+                  value={manualLat}
+                  onChange={(e) => setManualLat(e.target.value)}
+                  placeholder="Ej: -23.40250"
+                  inputMode="decimal"
+                />
+              </Field>
+              <Field label="Longitud">
+                <input
+                  className="new-order-input"
+                  value={manualLng}
+                  onChange={(e) => setManualLng(e.target.value)}
+                  placeholder="Ej: -57.44430"
+                  inputMode="decimal"
+                />
+              </Field>
+            </div>
+            <button type="button" className="new-order-client-link" onClick={fixManualDestination}>
+              <MapPin size={15} /> Fijar destino con estas coordenadas
+            </button>
+          </div>
+        )}
 
         <div className="new-order-map-box">
           <p className="commerce-map-hint">Haz clic en el mapa u usa el buscador para fijar el destino. La ruta se dibuja automáticamente.</p>

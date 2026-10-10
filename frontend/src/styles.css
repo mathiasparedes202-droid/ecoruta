@@ -604,6 +604,25 @@ nav a { color: #526963; font-weight: 600; }
   margin: 5px 0 0;
 }
 
+.new-order__offline-banner {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: .82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 10px 0 0;
+}
+
+.new-order-offline-coords {
+  background: #fffbeb;
+  border: 1px dashed #f59e0b;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+
 .new-order__header .eyebrow {
   color: #bd6a49;
   font-size: .68rem;
