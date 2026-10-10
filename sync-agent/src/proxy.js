@@ -3,8 +3,44 @@ import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { loadState } from './store.js';
 import { forward } from './webClient.js';
-import { enqueueOp, log, serDates, loadOutbox, saveOutbox } from './store.js';
+import { enqueueOp, log, serDates } from './store.js';
 import { fetchLocalPedido, fetchLocalVenta, ensurePedidoUuid } from './localDb.js';
+import { enqueueSms } from './sms/queue.js';
+import { encodePedidoCreado, encodePago, encodeEstado, encodeCancel } from './sms/codec.js';
+
+// Convierte un snapshot/replay offline a su SMS compacto y lo encola.
+// Nunca rompe el flujo principal: si el evento no es codificable, se ignora.
+function queueSmsFor(type, data) {
+  try {
+    let text = null;
+    const kind = type === 'replay_pedido' ? data.action : type;
+    if (type === 'pedido') {
+      text = encodePedidoCreado({
+        sync_uuid: data.sync_uuid,
+        id_comercio: data.id_comercio,
+        tarifa_ecologica: data.tarifa_ecologica,
+        metodo_pago: data.metodo_pago,
+        pagado: data.pagado,
+      });
+    } else if (kind === 'pago' && data.pagado) {
+      text = encodePago({
+        sync_uuid: data.sync_uuid,
+        monto_recibido: data.monto_recibido ?? data.payload?.monto_recibido,
+        comprobante: data.comprobante_transferencia ?? data.payload?.comprobante_transferencia ?? '',
+      });
+    } else if (kind === 'estado' && data.id_estado) {
+      text = encodeEstado({ sync_uuid: data.sync_uuid, id_estado: data.id_estado ?? data.payload?.id_estado });
+    } else if (kind === 'cancel') {
+      text = encodeCancel({ sync_uuid: data.sync_uuid, motivo: data.motivo || data.motivo_cancelacion || '' });
+    }
+    if (text) {
+      enqueueSms(text, { kind: type === 'pedido' ? 'pedido' : kind, sync_uuid: data.sync_uuid });
+      log(`[sms] paquete ${text.slice(4, 6)} encolado (${text.length} chars)`);
+    }
+  } catch (e) {
+    log(`[sms] no codificable (${type}): ${e.message}`);
+  }
+}
 
 export const proxy = Router();
 proxy.use(json({ limit: '5mb' }));
@@ -71,19 +107,18 @@ proxy.use('/api', async (req, res) => {
       const key = online ? config.webSyncKey : config.localSyncKey;
       const r = await forward(dest, req, { 'x-sync-key': key });
 
-      // Si fue a local (offline), encolar snapshot para el push posterior.
+      // Si fue a local (offline), encolar snapshot para el push posterior
+      // y su equivalente SMS compacto (canal nacional sin internet).
       if (!online && r.status >= 200 && r.status < 300) {
         const kind = snap.type === 'pedido' ? 'pedido offline' : 'venta offline';
         try {
           const id = snap.pickId(r.json);
           const snapshot = id ? await snap.fetch(Number(id)) : null;
-          enqueueOp({
-            type: snap.type,
-            sync_uuid: req.body.sync_uuid,
-            snapshot: serDates(snapshot
-              ? { ...snapshot, sync_uuid: req.body.sync_uuid }
-              : { ...req.body }),
-          });
+          const full = serDates(snapshot
+            ? { ...snapshot, sync_uuid: req.body.sync_uuid }
+            : { ...req.body });
+          enqueueOp({ type: snap.type, sync_uuid: req.body.sync_uuid, snapshot: full });
+          queueSmsFor(snap.type, full);
           log(`[proxy] ${kind} ${req.body.sync_uuid} guardado en local y encolado`);
         } catch (e) {
           enqueueOp({ type: snap.type, sync_uuid: req.body.sync_uuid, snapshot: { ...req.body } });
@@ -103,7 +138,9 @@ proxy.use('/api', async (req, res) => {
       if (replayMatch) {
         const uuid = await ensurePedidoUuid(replayMatch.m[1]);
         if (uuid) {
-          enqueueOp({ type: 'replay_pedido', sync_uuid: uuid, action: replayMatch.action, payload: req.body || {} });
+          const payload = req.body || {};
+          enqueueOp({ type: 'replay_pedido', sync_uuid: uuid, action: replayMatch.action, payload });
+          queueSmsFor('replay_pedido', { sync_uuid: uuid, action: replayMatch.action, ...payload });
           log(`[proxy] ${replayMatch.action} pedido ${uuid.slice(0, 8)} offline -> local + replay encolado`);
         } else {
           enqueueOp({ type: 'replay', method: req.method, path: req.originalUrl, body: req.body || {} });
