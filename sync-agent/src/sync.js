@@ -50,7 +50,7 @@ export async function runPush() {
     return { error: resp?.message || 'push rechazado' };
   }
 
-  const byUuid = new Map(items.map((x) => [x.snapshot.sync_uuid, x]));
+  const byUuid = new Map(items.map((x) => [(x.snapshot?.sync_uuid ?? x.sync_uuid) || x.id, x]));
   let applied = 0;
   for (const r of resp.results || []) {
     const op = byUuid.get(r.sync_uuid);

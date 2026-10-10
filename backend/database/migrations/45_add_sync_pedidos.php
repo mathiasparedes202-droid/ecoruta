@@ -89,10 +89,24 @@ if (!colExists45($db, 'pedidos', 'origen')) {
 // 3) updated_at (pull incremental)
 if (!colExists45($db, 'pedidos', 'updated_at')) {
     $db->exec("ALTER TABLE pedidos ADD COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER fecha_solicitud");
-    $db->exec("UPDATE pedidos SET updated_at = fecha_solicitud WHERE updated_at IS NULL");
     echo "OK: pedidos.updated_at agregado.\n";
 } else {
     echo "-- pedidos.updated_at ya existe.\n";
+}
+
+// Rellenos para filas preexistentes (sin esto el pull incremental las ignora
+// para siempre y los uuid nulos rompen la idempotencia):
+//  - updated_at NULL -> fecha_solicitud (conserva el orden cronológico)
+//  - sync_uuid NULL  -> UUID() único por fila (idempotencia estable)
+$backfillTs = (int) $db->query('SELECT COUNT(*) FROM pedidos WHERE updated_at IS NULL')->fetchColumn();
+if ($backfillTs > 0) {
+    $db->exec('UPDATE pedidos SET updated_at = fecha_solicitud WHERE updated_at IS NULL');
+    echo "OK: updated_at rellenado en $backfillTs pedido(s).\n";
+}
+$backfillUuid = (int) $db->query('SELECT COUNT(*) FROM pedidos WHERE sync_uuid IS NULL OR sync_uuid = \'\'')->fetchColumn();
+if ($backfillUuid > 0) {
+    $db->exec("UPDATE pedidos SET sync_uuid = UUID(), origen = 'web' WHERE sync_uuid IS NULL OR sync_uuid = ''");
+    echo "OK: sync_uuid generado en $backfillUuid pedido(s).\n";
 }
 
 echo "== Migración 45 completa. Aplica este mismo archivo en LOCAL y en WEB. ==\n";
