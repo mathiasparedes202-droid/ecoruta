@@ -48,6 +48,21 @@ class Database
             PDO::ATTR_EMULATE_PREPARES   => false                  // Preparados reales
         ];
 
+        // TLS (TiDB Cloud lo exige). DB_SSL=true activa SSL; DB_SSL_CA opcional.
+        $ssl = filter_var(App::env('DB_SSL', false), FILTER_VALIDATE_BOOLEAN);
+        $sslCa = App::env('DB_SSL_CA', null);
+        if (!$sslCa && $ssl) {
+            if (file_exists('/etc/ssl/certs/ca-certificates.crt')) {
+                $sslCa = '/etc/ssl/certs/ca-certificates.crt';
+            }
+        }
+        if ($sslCa && file_exists($sslCa)) {
+            $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+        } elseif ($ssl) {
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+        }
+
         try {
             // Crear conexión PDO
             $this->connection = new PDO($dsn, $user, $pass, $options);
