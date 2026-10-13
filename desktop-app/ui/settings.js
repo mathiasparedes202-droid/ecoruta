@@ -11,6 +11,15 @@ function say(msg) {
 async function refresh() {
   $('btnSave').disabled = true;
   const cfg = await ecoruta.getConfig();
+  const brand = await ecoruta.getBrand();
+  const lic = await ecoruta.getLicense();
+  $('brandTitle').textContent = `${brand.company} · Conexiones`;
+  $('brandCompany').value = brand.company || '';
+  if (brand.color) $('brandColor').value = brand.color;
+  $('licenseBox').innerHTML =
+    `Estado: <b>${lic.state}</b> ${lic.company ? `· ${lic.company} (${lic.plan})` : ''}` +
+    (lic.daysLeft > 0 ? ` · quedan ${lic.daysLeft} días` : '') +
+    `<br><small>${lic.detail}</small>`;
   for (const f of FIELDS) {
     if (f === 'checkSeconds') { $('checkSeconds').value = cfg.checkSeconds; continue; }
     if (f === 'syncKey') continue; // no se muestra; placeholder indica estado
@@ -77,4 +86,14 @@ $('btnDetect').onclick = async () => {
   }
 };
 
+$('btnLicense').onclick = async () => {
+  const r = await ecoruta.installLicense();
+  say(r.installed ? 'licencia instalada.' : 'instalación cancelada' + (r.error ? ': ' + r.error : '.'));
+  await refresh();
+};
+$('btnBrand').onclick = async () => {
+  const b = await ecoruta.saveBrand({ company: $('brandCompany').value, color: $('brandColor').value });
+  say('marca guardada: ' + b.company);
+  await refresh();
+};
 refresh().catch((e) => say('error: ' + e.message));

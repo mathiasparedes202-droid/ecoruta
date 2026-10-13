@@ -7,5 +7,10 @@ coverage/
 .DS_Store
 # Instaladores Electron (binarios grandes, se generan con npm run dist)
 dist-installer/
-# Estado local del sync-agent (cola, estado, logs de la PC)
+# Clave PRIVADA de licencias: jamás commitear (solo tools/ local del vendor)
+tools/vendor-private.pem
+tools/*-private*
+# Estado local de sync (colas, logs de cada PC)
 sync-agent/data/
+sync-hub/data/
+sync-connector/data/

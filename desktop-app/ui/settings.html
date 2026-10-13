@@ -8,10 +8,27 @@
 </head>
 <body>
 <header>
-  <strong>EcoRuta · Conexiones</strong>
+  <strong id="brandTitle">EcoRuta · Conexiones</strong>
   <span id="mode" class="pill">…</span>
 </header>
 <main>
+  <section class="card">
+    <h3>Licencia comercial</h3>
+    <div id="licenseBox">…</div>
+    <div class="row">
+      <button id="btnLicense">Instalar licencia…</button>
+    </div>
+    <p class="hint">Sin licencia: 30 días de prueba. Vencida: solo modo local.</p>
+  </section>
+  <section class="card">
+    <h3>Marca del cliente (marca blanca)</h3>
+    <div class="row">
+      <label>Empresa<input id="brandCompany" size="30"></label>
+      <label>Color<input id="brandColor" type="color" value="#166534"></label>
+    </div>
+    <div class="row"><button id="btnBrand">Guardar marca</button></div>
+    <p class="hint">Un instalador sirve a todos los clientes: cada PC guarda su marca y licencia.</p>
+  </section>
   <section class="card">
     <h3>Qué muestra la ventana</h3>
     <p class="hint">Web primero; si cae, pasa solo a local; al volver, sincroniza y regresa. Puedes forzarlo desde la bandeja.</p>

@@ -6,10 +6,11 @@
 // - Ajustes por sistema: URLs + clave sync se guardan en userData (fuera del repo).
 // - Smoke test: `electron . --smoke` verifica sin abrir ventanas.
 
-const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, nativeImage, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, execFileSync } = require('child_process');
+const { licenseStatus } = require('./licensing');
 
 let __repoRootCache = null;
 function repoRoot() {
@@ -64,6 +65,43 @@ let currentTarget = '';
 let lastMode = 'unknown';
 let children = [];
 let timer = null;
+let lic = { state: 'trial', company: '', plan: '', daysLeft: 30, detail: '' };
+let brand = { company: 'EcoRuta', color: '#166534' };
+
+// ---------- Marca blanca (por cliente) ----------
+function brandPath() {
+  return path.join(app.getPath('userData'), 'brand.json');
+}
+function loadBrand() {
+  try {
+    const b = JSON.parse(fs.readFileSync(brandPath(), 'utf8'));
+    brand = { company: String(b.company || 'EcoRuta').slice(0, 60), color: String(b.color || '#166534').slice(0, 20) };
+  } catch { brand = { company: 'EcoRuta', color: '#166534' }; }
+  return brand;
+}
+function saveBrand(next) {
+  brand = {
+    company: String(next.company || 'EcoRuta').slice(0, 60),
+    color: /^#[0-9a-fA-F]{6}$/.test(String(next.color || '')) ? next.color : '#166534',
+  };
+  fs.writeFileSync(brandPath(), JSON.stringify(brand, null, 2));
+  if (mainWin) mainWin.setTitle(`${brand.company} — ${lastMode === 'online_web' ? 'WEB' : 'LOCAL'}`);
+  buildTray();
+  return brand;
+}
+function licensePath() {
+  return path.join(app.getPath('userData'), 'licencia.json');
+}
+function refreshLicense() {
+  lic = licenseStatus(app.getPath('userData'), licensePath());
+  return lic;
+}
+// Vencida = solo local (sin web ni sync disparado). Es la única
+// restricción aplicable 100% offline y sin servidor.
+function effectiveMode() {
+  if (lic.state === 'expired' || (lic.state === 'none' && lic.detail !== 'sin clave de vendor (build dev)')) return 'local';
+  return cfg.mode;
+}
 
 function log(...a) { console.log('[desktop]', ...a); }
 
@@ -206,8 +244,9 @@ let lastAutostart = { at: null, results: [] };
 
 // ---------- Failover ----------
 function targetFor(webHealthy) {
-  if (cfg.mode === 'web') return cfg.webAppUrl;
-  if (cfg.mode === 'local') return cfg.localAppUrl;
+  const mode = effectiveMode();
+  if (mode === 'web') return cfg.webAppUrl;
+  if (mode === 'local') return cfg.localAppUrl;
   return webHealthy ? cfg.webAppUrl : cfg.localAppUrl;
 }
 
@@ -215,14 +254,27 @@ function setWindowTarget(url) {
   if (!mainWin || currentTarget === url) return;
   currentTarget = url;
   mainWin.loadURL(url).catch((e) => log('loadURL:', e.message));
-  mainWin.setTitle(`EcoRuta — ${url.includes('localhost') || url.includes('127.0.0.1') ? 'LOCAL' : 'WEB'}`);
+  const side = url.includes('localhost') || url.includes('127.0.0.1') ? 'LOCAL' : 'WEB';
+  mainWin.setTitle(`${brand.company} — ${side}${lic.state === 'trial' ? ` (prueba: ${lic.daysLeft}d)` : ''}`);
 }
 
 function notify(title, body) {
   try { new Notification({ title, body }).show(); } catch { /* sin notificaciones */ }
 }
 
+function syncAllowed() {
+  // Sin licencia válida no se dispara sync desde la app (el agente propio
+  // del cliente sigue sus propias reglas; esto gobierna la app vendida).
+  if (lic.state === 'expired') return false;
+  if (lic.state === 'none' && lic.detail !== 'sin clave de vendor (build dev)') return false;
+  return true;
+}
+
 async function triggerAgentSync() {
+  if (!syncAllowed()) {
+    notify(`${brand.company}: sin licencia`, 'Sincronización bloqueada. Instala una licencia válida.');
+    return;
+  }
   try {
     const r = await checkUrl(cfg.agentUrl.replace(/\/$/, '') + '/agent/sync-now', 30000);
     log('sync-now:', r.status);
@@ -292,7 +344,9 @@ function trayIcon() {
 }
 
 function buildTray() {
-  const label = lastMode === 'online_web' ? 'EcoRuta: WEB' : lastMode === 'offline_web' ? 'EcoRuta: LOCAL' : 'EcoRuta';
+  const side = lastMode === 'online_web' ? 'WEB' : lastMode === 'offline_web' ? 'LOCAL' : '…';
+  const licTag = lic.state === 'valid' ? '' : lic.state === 'trial' ? ` (prueba ${lic.daysLeft}d)` : ' (SIN LICENCIA)';
+  const label = `${brand.company}: ${side}${licTag}`;
   if (!tray) {
     tray = new Tray(trayIcon() || nativeImage.createEmpty());
     tray.setToolTip(label);
@@ -343,6 +397,24 @@ ipcMain.handle('local-ensure', async () => {
   return res;
 });
 ipcMain.handle('local-last', () => lastAutostart);
+ipcMain.handle('brand-get', () => brand);
+ipcMain.handle('brand-save', (_ev, next) => saveBrand(next || {}));
+ipcMain.handle('license-get', () => ({ ...lic }));
+ipcMain.handle('license-install', async () => {
+  const r = await dialog.showOpenDialog(settingsWin || null, {
+    title: 'Instalar licencia', filters: [{ name: 'Licencia', extensions: ['json'] }],
+    properties: ['openFile'],
+  });
+  if (r.canceled || !r.filePaths.length) return { installed: false };
+  try {
+    fs.copyFileSync(r.filePaths[0], licensePath());
+  } catch (e) {
+    return { installed: false, error: String(e.message || e) };
+  }
+  refreshLicense();
+  buildTray();
+  return { installed: true, license: { ...lic } };
+});
 ipcMain.handle('repo-detect', () => {
   __repoRootCache = null;
   const found = resolveRepoRoot();
@@ -360,10 +432,16 @@ function appendBootLog(text) {
 
 async function boot() {
   loadConfig();
+  loadBrand();
+  refreshLicense();
+  log(`marca: ${brand.company} · licencia: ${lic.state} (${lic.detail})`);
   if (SMOKE) return smoke();
   await app.whenReady();
   createMain();
   buildTray();
+  if (lic.state === 'expired' || lic.state === 'none') {
+    notify(`${brand.company}: licencia`, lic.detail + '. La app queda en modo local.');
+  }
   if (cfg.autostartLocal) {
     log('levantando stack local…');
     try {
