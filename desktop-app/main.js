@@ -39,16 +39,26 @@ let timer = null;
 function log(...a) { console.log('[desktop]', ...a); }
 
 // ---------- Config ----------
+const URL_FIELDS = ['webAppUrl', 'localAppUrl', 'webApiUrl', 'localApiUrl', 'agentUrl'];
+function withDefaults(c) {
+  // Un campo vacío nunca puede romper el failover: vuelve al valor de fábrica.
+  const out = { ...DEFAULTS, ...c };
+  for (const f of URL_FIELDS) {
+    if (!String(out[f] || '').trim()) out[f] = DEFAULTS[f];
+  }
+  if (!Number(out.checkSeconds) || out.checkSeconds < 5) out.checkSeconds = DEFAULTS.checkSeconds;
+  return out;
+}
 function loadConfig() {
   cfgPath = path.join(app.getPath('userData'), 'ecoruta-desktop-config.json');
   try {
     const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    cfg = { ...DEFAULTS, ...raw };
+    cfg = withDefaults(raw);
   } catch { cfg = { ...DEFAULTS }; }
   return cfg;
 }
 function saveConfig(next) {
-  cfg = { ...cfg, ...next };
+  cfg = withDefaults({ ...cfg, ...next });
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
   return cfg;
 }
@@ -267,6 +277,12 @@ ipcMain.handle('cfg-get', () => ({ ...cfg, syncKey: cfg.syncKey ? '••••�
 ipcMain.handle('cfg-save', (_ev, next) => {
   if (!next.syncKey || next.syncKey === '••••••••') delete next.syncKey;
   const saved = saveConfig(next);
+  void tick(true);
+  buildTray();
+  return { ...saved, syncKey: saved.syncKey ? '••••••••' : '' };
+});
+ipcMain.handle('cfg-reset', () => {
+  const saved = saveConfig({ ...DEFAULTS, syncKey: cfg.syncKey });
   void tick(true);
   buildTray();
   return { ...saved, syncKey: saved.syncKey ? '••••••••' : '' };

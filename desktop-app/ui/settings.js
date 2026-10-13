@@ -9,6 +9,7 @@ function say(msg) {
 }
 
 async function refresh() {
+  $('btnSave').disabled = true;
   const cfg = await ecoruta.getConfig();
   for (const f of FIELDS) {
     if (f === 'checkSeconds') { $('checkSeconds').value = cfg.checkSeconds; continue; }
@@ -23,11 +24,19 @@ async function refresh() {
   $('status').innerHTML =
     `Web: <b>${st.web.ok ? 'OK' : 'CAÍDA'}</b> (${st.web.status || st.web.error || '?'})<br>` +
     `Viendo: <code>${st.target || '…'}</code>`;
+  $('btnSave').disabled = false;
   say(`verificado: ${st.mode} -> ${st.target}`);
 }
 
 $('btnCheck').onclick = refresh;
-$('btnSync').onclick = async () => { await ecoruta.syncNow(); say('sincronización disparada'); await refresh(); };
+$('btnSync').onclick = async () => { await ecoruta.syncNow(); say('sincronización disparada');   await refresh();
+};
+$('btnReset').onclick = async () => {
+  if (!confirm('¿Volver a los valores de fábrica? (la clave sync se conserva)')) return;
+  await ecoruta.resetConfig();
+  $('saveMsg').textContent = 'Valores restablecidos.';
+  await refresh();
+};
 $('btnLocal').onclick = async () => {
   say('levantando stack local…');
   const res = await ecoruta.ensureLocal();
