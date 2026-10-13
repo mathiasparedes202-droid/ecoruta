@@ -1,0 +1,13 @@
+{
+  "name": "ecoruta-sync-connector",
+  "version": "1.0.0",
+  "description": "Conector universal: vive junto a cualquier sistema, sube sus cambios al Hub y baja los de los demás. Cero dependencias.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/connector.js",
+    "test": "node src/connector.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
