@@ -101,8 +101,17 @@ async function ensureService({ name, url, cmd, args, cwd }) {
   const h = await checkUrl(url, 4000);
   if (h.ok) return { name, already: true };
   if (!fs.existsSync(cwd)) return { name, error: 'carpeta no encontrada: ' + cwd };
-  const child = spawn(cmd, args, { cwd, detached: true, stdio: 'ignore', windowsHide: true });
-  child.unref();
+  let child;
+  try {
+    child = spawn(cmd, args, { cwd, detached: true, stdio: 'ignore', windowsHide: true });
+    await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('spawn', resolve);
+    });
+    child.unref();
+  } catch (e) {
+    return { name, error: 'no se pudo lanzar: ' + String(e.message || e) };
+  }
   children.push(child);
   // Espera a que responda (hasta ~25 s)
   for (let i = 0; i < 25; i++) {
@@ -143,21 +152,24 @@ async function ensureLocalStack(onEvent) {
   }
   try {
     const webPort = new URL(cfg.localAppUrl).port || '5173';
-    const viteBin = path.join(REPO_ROOT, 'frontend', 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite');
-    if (webDistOk && fs.existsSync(viteBin)) {
+    // Sin shell: .cmd no arranca con spawn directo; se corre el JS con node.
+    const viteJs = path.join(REPO_ROOT, 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
+    if (webDistOk && fs.existsSync(viteJs)) {
       out.push(await ensureService({
         name: 'web-local', url: cfg.localAppUrl,
-        cmd: viteBin, args: ['preview', '--port', String(webPort), '--strictPort'],
+        cmd: 'node', args: [viteJs, 'preview', '--port', String(webPort), '--strictPort', '--host', '127.0.0.1'],
         cwd: path.join(REPO_ROOT, 'frontend'),
       }));
     } else {
-      out.push({ name: 'web-local', error: 'falta frontend/dist o vite instalado' });
+      out.push({ name: 'web-local', error: 'falta frontend/dist o node_modules/vite' });
     }
   } catch (e) {
     out.push({ name: 'web-local', error: String(e.message || e) });
   }
   return out;
 }
+
+let lastAutostart = { at: null, results: [] };
 
 // ---------- Failover ----------
 function targetFor(webHealthy) {
@@ -291,9 +303,22 @@ ipcMain.handle('net-test', async (_ev, url) => checkUrl(url, 10000));
 ipcMain.handle('api-test', async (_ev, base) => apiHealth(base));
 ipcMain.handle('status-now', async () => tick(true));
 ipcMain.handle('sync-now', async () => { await triggerAgentSync(); return { ok: true }; });
-ipcMain.handle('local-ensure', async () => ensureLocalStack());
+ipcMain.handle('local-ensure', async () => {
+  const res = await ensureLocalStack();
+  lastAutostart = { at: new Date().toISOString(), results: res };
+  return res;
+});
+ipcMain.handle('local-last', () => lastAutostart);
 
 // ---------- Arranque ----------
+function appendBootLog(text) {
+  try {
+    const dir = path.join(app.getPath('userData'), 'logs');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'autostart.log'), `[${new Date().toISOString()}] ${text}\n`);
+  } catch { /* diagnóstico best-effort */ }
+}
+
 async function boot() {
   loadConfig();
   if (SMOKE) return smoke();
@@ -302,8 +327,18 @@ async function boot() {
   buildTray();
   if (cfg.autostartLocal) {
     log('levantando stack local…');
-    const res = await ensureLocalStack(log);
-    log('stack:', JSON.stringify(res));
+    try {
+      const res = await ensureLocalStack(log);
+      lastAutostart = { at: new Date().toISOString(), results: res };
+      for (const r of res) appendBootLog(`${r.name}: ${r.already ? 'ya corría' : r.started ? 'levantado' : 'FALLO: ' + r.error}`);
+      const failed = res.filter((r) => r.error);
+      if (failed.length) {
+        notify('EcoRuta: stack local incompleto', failed.map((r) => `${r.name}: ${r.error}`).join(' · ').slice(0, 220));
+      }
+    } catch (e) {
+      appendBootLog('FALLO general autostart: ' + String(e.message || e));
+      notify('EcoRuta: no se pudo levantar lo local', String(e.message || e).slice(0, 220));
+    }
   }
   await tick();
   timer = setInterval(() => { void tick(); }, Math.max(5, cfg.checkSeconds) * 1000);

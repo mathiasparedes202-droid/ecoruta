@@ -26,6 +26,10 @@ async function refresh() {
     `Viendo: <code>${st.target || '…'}</code>`;
   $('btnSave').disabled = false;
   say(`verificado: ${st.mode} -> ${st.target}`);
+  try {
+    const last = await ecoruta.lastAutostart();
+    if (last && last.at) say(`stack local (${last.at}): ` + (last.results || []).map((r) => `${r.name}=${r.already ? 'ya' : r.started ? 'ok' : 'FALLO:' + r.error}`).join(' · '));
+  } catch { /* agente viejo sin este canal */ }
 }
 
 $('btnCheck').onclick = refresh;

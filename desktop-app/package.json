@@ -1,6 +1,6 @@
 {
   "name": "ecoruta-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "App de escritorio EcoRuta: conmuta automáticamente entre sistema web y local, gestiona conexiones y levanta el stack local.",
   "main": "main.js",
   "scripts": {
