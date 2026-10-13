@@ -11,7 +11,36 @@ const path = require('path');
 const fs = require('fs');
 const { spawn, execFileSync } = require('child_process');
 
-const REPO_ROOT = path.join(__dirname, '..');
+let __repoRootCache = null;
+function repoRoot() {
+  if (!__repoRootCache) __repoRootCache = resolveRepoRoot();
+  return __repoRootCache;
+}
+
+const REPO_DEFAULTS = [
+  // 1) Junto a la app en desarrollo (desktop-app/..)
+  path.join(__dirname, '..'),
+  // 2) Instalación estándar de oficina
+  'C:\\xampp\\htdocs\\ecoruta',
+];
+
+function looksLikeRepoRoot(dir) {
+  try {
+    return fs.existsSync(path.join(dir, 'backend', 'public', 'router.php'))
+      && fs.existsSync(path.join(dir, 'sync-agent', 'src', 'server.js'));
+  } catch { return false; }
+}
+
+// La app instalada vive en AppData; el sistema (backend, agente, frontend)
+// puede estar en otro lado. Orden: ajuste guardado > desarrollo > estándar.
+function resolveRepoRoot() {
+  const saved = String(cfg.repoPath || '').trim();
+  if (saved && looksLikeRepoRoot(saved)) return saved;
+  for (const cand of REPO_DEFAULTS) {
+    if (looksLikeRepoRoot(cand)) return cand;
+  }
+  return '';
+}
 const SMOKE = process.argv.includes('--smoke');
 
 const DEFAULTS = {
@@ -128,24 +157,28 @@ async function ensureLocalStack(onEvent) {
   if (!binExists('php') || !binExists('node')) {
     return [{ name: 'requisitos', error: 'falta php o node en el PATH' }];
   }
-  const agentEnvOk = fs.existsSync(path.join(REPO_ROOT, 'sync-agent', '.env'))
-    && fs.existsSync(path.join(REPO_ROOT, 'sync-agent', 'node_modules'));
-  const webDistOk = fs.existsSync(path.join(REPO_ROOT, 'frontend', 'dist', 'index.html'))
-    || fs.existsSync(path.join(REPO_ROOT, 'EcoRuta-app', 'dist', 'index.html'));
+  const root = repoRoot();
+  if (!root) {
+    return [{ name: 'sistema', error: 'no se encontró la carpeta del sistema (configúrala en Conexiones > Carpeta del sistema local)' }];
+  }
+  const agentEnvOk = fs.existsSync(path.join(repoRoot(), 'sync-agent', '.env'))
+    && fs.existsSync(path.join(repoRoot(), 'sync-agent', 'node_modules'));
+  const webDistOk = fs.existsSync(path.join(repoRoot(), 'frontend', 'dist', 'index.html'))
+    || fs.existsSync(path.join(repoRoot(), 'EcoRuta-app', 'dist', 'index.html'));
   emit(`requisitos php/node ok · agent listo=${agentEnvOk} · dist=${webDistOk}`);
 
   const apiPort = new URL(cfg.localApiUrl).port || '8000';
   out.push(await ensureService({
     name: 'api-local', url: `${cfg.localApiUrl}/api/health`,
     cmd: 'php', args: ['-S', `127.0.0.1:${apiPort}`, 'public/router.php'],
-    cwd: path.join(REPO_ROOT, 'backend'),
+    cwd: path.join(repoRoot(), 'backend'),
   }));
   const agentPort = new URL(cfg.agentUrl).port || '18650';
   if (agentEnvOk) {
     out.push(await ensureService({
       name: 'sync-agent', url: `${cfg.agentUrl}/agent/status`,
       cmd: 'node', args: ['src/server.js'],
-      cwd: path.join(REPO_ROOT, 'sync-agent'),
+      cwd: path.join(repoRoot(), 'sync-agent'),
     }));
   } else {
     out.push({ name: 'sync-agent', error: 'falta sync-agent/.env o npm install en sync-agent' });
@@ -153,12 +186,12 @@ async function ensureLocalStack(onEvent) {
   try {
     const webPort = new URL(cfg.localAppUrl).port || '5173';
     // Sin shell: .cmd no arranca con spawn directo; se corre el JS con node.
-    const viteJs = path.join(REPO_ROOT, 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
+    const viteJs = path.join(repoRoot(), 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
     if (webDistOk && fs.existsSync(viteJs)) {
       out.push(await ensureService({
         name: 'web-local', url: cfg.localAppUrl,
         cmd: 'node', args: [viteJs, 'preview', '--port', String(webPort), '--strictPort', '--host', '127.0.0.1'],
-        cwd: path.join(REPO_ROOT, 'frontend'),
+        cwd: path.join(repoRoot(), 'frontend'),
       }));
     } else {
       out.push({ name: 'web-local', error: 'falta frontend/dist o node_modules/vite' });
@@ -251,7 +284,7 @@ function openSettings() {
 
 // ---------- Bandeja ----------
 function trayIcon() {
-  const p = path.join(REPO_ROOT, 'EcoRuta Logo.png');
+  const p = path.join(repoRoot(), 'EcoRuta Logo.png');
   try {
     if (fs.existsSync(p)) return nativeImage.createFromPath(p).resize({ width: 16, height: 16 });
   } catch { /* icono por defecto */ }
@@ -289,12 +322,13 @@ ipcMain.handle('cfg-get', () => ({ ...cfg, syncKey: cfg.syncKey ? '••••�
 ipcMain.handle('cfg-save', (_ev, next) => {
   if (!next.syncKey || next.syncKey === '••••••••') delete next.syncKey;
   const saved = saveConfig(next);
+  __repoRootCache = null; // re-detecta si cambió repoPath
   void tick(true);
   buildTray();
   return { ...saved, syncKey: saved.syncKey ? '••••••••' : '' };
 });
 ipcMain.handle('cfg-reset', () => {
-  const saved = saveConfig({ ...DEFAULTS, syncKey: cfg.syncKey });
+  const saved = saveConfig({ ...DEFAULTS, syncKey: cfg.syncKey, repoPath: '' });
   void tick(true);
   buildTray();
   return { ...saved, syncKey: saved.syncKey ? '••••••••' : '' };
@@ -309,6 +343,11 @@ ipcMain.handle('local-ensure', async () => {
   return res;
 });
 ipcMain.handle('local-last', () => lastAutostart);
+ipcMain.handle('repo-detect', () => {
+  __repoRootCache = null;
+  const found = resolveRepoRoot();
+  return { found: found || '', checked: [String(cfg.repoPath || ''), ...REPO_DEFAULTS] };
+});
 
 // ---------- Arranque ----------
 function appendBootLog(text) {

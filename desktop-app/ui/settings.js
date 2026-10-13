@@ -1,7 +1,7 @@
 'use strict';
 /* global ecoruta */
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['webAppUrl', 'localAppUrl', 'webApiUrl', 'localApiUrl', 'agentUrl', 'syncKey', 'checkSeconds'];
+const FIELDS = ['webAppUrl', 'localAppUrl', 'webApiUrl', 'localApiUrl', 'agentUrl', 'syncKey', 'checkSeconds', 'repoPath'];
 
 function say(msg) {
   const el = $('log');
@@ -14,6 +14,7 @@ async function refresh() {
   for (const f of FIELDS) {
     if (f === 'checkSeconds') { $('checkSeconds').value = cfg.checkSeconds; continue; }
     if (f === 'syncKey') continue; // no se muestra; placeholder indica estado
+    if (f === 'repoPath') { $('repoPath').value = cfg.repoPath || ''; continue; }
     $(f).value = cfg[f] || '';
   }
   $('syncKey').placeholder = cfg.syncKey ? '(guardada)' : '(vacía)';
@@ -65,6 +66,15 @@ $('btnTestWeb').onclick = async () => {
 $('btnTestLocal').onclick = async () => {
   const r = await ecoruta.testApi($('localApiUrl').value);
   say(`API local: ${r.ok ? 'OK' : 'FALLO'} ${r.status || ''} ${r.error || ''} (${r.ms} ms)`);
+};
+$('btnDetect').onclick = async () => {
+  const r = await ecoruta.detectRepo();
+  if (r.found) {
+    $('repoPath').value = r.found;
+    say('sistema encontrado en: ' + r.found + ' (pulsa Guardar)');
+  } else {
+    say('no se encontró el sistema en: ' + (r.checked || []).filter(Boolean).join(' · '));
+  }
 };
 
 refresh().catch((e) => say('error: ' + e.message));

@@ -32,11 +32,13 @@
     <label>API local (base)<input id="localApiUrl" size="46"></label>
     <label>Agente sync<input id="agentUrl" size="46"></label>
     <label>Clave sync (X-Sync-Key)<input id="syncKey" type="password" size="46" placeholder="(sin cambiar)"></label>
+    <label>Carpeta del sistema local (donde están backend, sync-agent, frontend)<input id="repoPath" size="46" placeholder="auto-detectar"></label>
     <label>Cada cuántos segundos vigilar<input id="checkSeconds" type="number" min="5" max="300"></label>
     <label class="chk"><input id="autostartLocal" type="checkbox"> Levantar stack local al abrir la app</label>
     <div class="row">
       <button id="btnSave">Guardar</button>
       <button id="btnReset" title="Volver a los valores de fábrica">Restablecer</button>
+      <button id="btnDetect" title="Buscar la carpeta del sistema">Detectar carpeta</button>
       <button id="btnTestWeb">Probar API web</button>
       <button id="btnTestLocal">Probar API local</button>
     </div>

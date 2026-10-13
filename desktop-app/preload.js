@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('ecoruta', {
   syncNow: () => ipcRenderer.invoke('sync-now'),
   ensureLocal: () => ipcRenderer.invoke('local-ensure'),
   lastAutostart: () => ipcRenderer.invoke('local-last'),
+  detectRepo: () => ipcRenderer.invoke('repo-detect'),
 });
