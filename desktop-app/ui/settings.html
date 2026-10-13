@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EcoRuta — Conexiones</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <strong>EcoRuta · Conexiones</strong>
+  <span id="mode" class="pill">…</span>
+</header>
+<main>
+  <section class="card">
+    <h3>Qué muestra la ventana</h3>
+    <p class="hint">Web primero; si cae, pasa solo a local; al volver, sincroniza y regresa. Puedes forzarlo desde la bandeja.</p>
+    <div id="status">…</div>
+    <div class="row">
+      <button id="btnCheck">Verificar ahora</button>
+      <button id="btnSync">Sincronizar ahora</button>
+      <button id="btnLocal">Levantar stack local</button>
+    </div>
+    <pre id="log"></pre>
+  </section>
+  <section class="card">
+    <h3>Sistemas (ajustable a cualquiera)</h3>
+    <p class="hint">Apunta cada campo al sistema que uses. La clave queda en tu PC, nunca en el repo.</p>
+    <label>App web (URL que ven los usuarios)<input id="webAppUrl" size="46"></label>
+    <label>App local<input id="localAppUrl" size="46"></label>
+    <label>API web (base)<input id="webApiUrl" size="46"></label>
+    <label>API local (base)<input id="localApiUrl" size="46"></label>
+    <label>Agente sync<input id="agentUrl" size="46"></label>
+    <label>Clave sync (X-Sync-Key)<input id="syncKey" type="password" size="46" placeholder="(sin cambiar)"></label>
+    <label>Cada cuántos segundos vigilar<input id="checkSeconds" type="number" min="5" max="300"></label>
+    <label class="chk"><input id="autostartLocal" type="checkbox"> Levantar stack local al abrir la app</label>
+    <div class="row">
+      <button id="btnSave">Guardar</button>
+      <button id="btnTestWeb">Probar API web</button>
+      <button id="btnTestLocal">Probar API local</button>
+    </div>
+    <div id="saveMsg"></div>
+  </section>
+</main>
+<script src="settings.js"></script>
+</body>
+</html>
