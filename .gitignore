@@ -5,5 +5,7 @@ node_modules/
 dist/
 coverage/
 .DS_Store
+# Instaladores Electron (binarios grandes, se generan con npm run dist)
+dist-installer/
 # Estado local del sync-agent (cola, estado, logs de la PC)
 sync-agent/data/

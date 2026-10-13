@@ -5,12 +5,39 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "smoke": "electron . --smoke"
+    "smoke": "electron . --smoke",
+    "dist": "electron-builder --win nsis portable"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "electron": "^33.2.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.ecoruta.desktop",
+    "productName": "EcoRuta",
+    "files": [
+      "main.js",
+      "preload.js",
+      "ui/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist-installer"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "EcoRuta"
+    }
   }
 }
