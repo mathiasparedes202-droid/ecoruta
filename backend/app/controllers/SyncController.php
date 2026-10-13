@@ -225,8 +225,6 @@ class SyncController extends Controller
                 $this->response->json(['success' => false, 'message' => 'pedidos y ventas deben ser arreglos'], 422);
                 return;
             }
-            // Compat: antes solo se mandaba {ventas} o {items:ventas}; si hay
-            // tabla pedidos y el lote trae items sin formato venta, se ignora aquí.
             if (count($pedidos) + count($ventas) > 100) {
                 $this->response->json(['success' => false, 'message' => 'Máximo 100 registros por lote'], 422);
                 return;

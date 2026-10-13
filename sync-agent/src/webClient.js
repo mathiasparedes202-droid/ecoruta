@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { getDevice } from './store.js';
 
 async function fetchTimeout(url, opts = {}, ms = config.healthTimeoutMs) {
   const ctl = new AbortController();
@@ -56,7 +57,7 @@ export async function webPush({ pedidos = [], ventas = [], replays = [] }) {
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sync-key': config.webSyncKey },
-      body: JSON.stringify({ pedidos, ventas, replays }),
+      body: JSON.stringify({ pedidos, ventas, replays, device: getDevice() }),
     },
     60000
   );
@@ -68,6 +69,13 @@ export async function webPull(since, limit = 200) {
   const u = new URL(`${config.webBase}/api/sync/pull`);
   u.searchParams.set('since', since);
   u.searchParams.set('limit', String(limit));
+  try {
+    const dev = getDevice();
+    u.searchParams.set('device_id', dev.id);
+    u.searchParams.set('device_name', dev.name || '');
+  } catch {
+    /* sin identidad de nodo: el pull sigue funcionando */
+  }
   const r = await fetchTimeout(u, { headers: { 'x-sync-key': config.webSyncKey } }, 60000);
   return r.json();
 }
@@ -80,7 +88,7 @@ export async function localPush({ pedidos = [], ventas = [], replays = [] }) {
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sync-key': config.localSyncKey },
-      body: JSON.stringify({ pedidos, ventas, replays }),
+      body: JSON.stringify({ pedidos, ventas, replays, device: getDevice() }),
     },
     60000
   );

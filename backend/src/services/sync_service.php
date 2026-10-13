@@ -39,6 +39,41 @@ function syncColExists(PDO $pdo, string $table, string $col): bool
     return (bool) $st->fetchColumn();
 }
 
+/**
+ * Inventario de nodos: registra/actualiza el dispositivo que sincroniza
+ * (tabla sync_devices, migración 46). Nunca rompe el sync: si la tabla no
+ * existe o falla, se ignora en silencio.
+ */
+function syncTouchDevice(PDO $pdo, $device, int $pushCount = 0, int $pullCount = 0): void
+{
+    try {
+        $device = is_array($device) ? $device : [];
+        $id = trim((string) ($device['id'] ?? ''));
+        if ($id === '' || !syncTableExists($pdo, 'sync_devices')) {
+            return;
+        }
+        $nombre = mb_substr(trim((string) ($device['name'] ?? '')), 0, 100);
+        $plat = mb_substr(trim((string) ($device['platform'] ?? '')), 0, 30);
+        $st = $pdo->prepare('SELECT id_dispositivo FROM sync_devices WHERE device_id = :d LIMIT 1');
+        $st->execute(['d' => $id]);
+        if ($st->fetch(PDO::FETCH_ASSOC)) {
+            $up = $pdo->prepare(
+                'UPDATE sync_devices SET nombre = :n, plataforma = :p, ultima_sincronizacion = NOW(),
+                 total_push = total_push + :push, total_pull = total_pull + :pull WHERE device_id = :d'
+            );
+            $up->execute(['n' => $nombre, 'p' => $plat, 'push' => $pushCount, 'pull' => $pullCount, 'd' => $id]);
+        } else {
+            $ins = $pdo->prepare(
+                "INSERT INTO sync_devices (device_id, nombre, plataforma, primera_sincronizacion, ultima_sincronizacion, total_push, total_pull)
+                 VALUES (:d, :n, :p, NOW(), NOW(), :push, :pull)"
+            );
+            $ins->execute(['d' => $id, 'n' => $nombre, 'p' => $plat, 'push' => $pushCount, 'pull' => $pullCount]);
+        }
+    } catch (Throwable $e) {
+        // El inventario jamás bloquea la sincronización.
+    }
+}
+
 function syncSystemUserId(PDO $pdo): int
 {
     foreach (['usuarios', 'usuario'] as $t) {

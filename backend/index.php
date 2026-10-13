@@ -264,6 +264,10 @@ if (($method === 'GET' && $path === '/api/sync/pull') || ($method === 'POST' && 
             $since = (string) ($_GET['since'] ?? '2000-01-01 00:00:00');
             $limit = (int) ($_GET['limit'] ?? 200);
             $data = syncPullPedidos($since, $limit);
+            syncTouchDevice(database(), [
+                'id' => (string) ($_GET['device_id'] ?? ''),
+                'name' => (string) ($_GET['device_name'] ?? ''),
+            ], 0, count($data['pedidos']));
             sendJson([
                 'success' => true,
                 'data' => [
@@ -300,6 +304,13 @@ if (($method === 'GET' && $path === '/api/sync/pull') || ($method === 'POST' && 
                 $uuid = trim((string) (((array) $v)['sync_uuid'] ?? ''));
                 $results[] = ['sync_uuid' => $uuid, 'status' => 'error', 'message' => 'Módulo tienda no disponible en este servidor (solo delivery)'];
             }
+            $applied = 0;
+            foreach ($results as $r) {
+                if (in_array($r['status'] ?? '', ['applied', 'duplicado'], true)) {
+                    $applied++;
+                }
+            }
+            syncTouchDevice(database(), $body['device'] ?? [], $applied, 0);
             sendJson([
                 'success' => true,
                 'server_time' => date('Y-m-d H:i:s'),

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -71,6 +72,32 @@ export function log(line) {
   const msg = `[${new Date().toISOString()}] ${line}\n`;
   fs.appendFileSync(LOG_FILE, msg);
   console.log(msg.trim());
+}
+
+// Identidad estable de este nodo (PC/teléfono). Se genera una vez y se
+// presenta en cada push/pull para el inventario de nodos del servidor.
+export function getDevice() {
+  const DEVICE_FILE = path.join(DATA_DIR, 'device.json');
+  try {
+    const d = JSON.parse(fs.readFileSync(DEVICE_FILE, 'utf8'));
+    if (d && d.id) return d;
+  } catch {
+    /* se crea abajo */
+  }
+  let host = 'pc';
+  try {
+    host = String(os.hostname() || 'pc').slice(0, 40);
+  } catch {
+    /* nombre genérico */
+  }
+  const d = {
+    id: `dev_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`,
+    name: host,
+    platform: process.platform,
+    created_at: new Date().toISOString(),
+  };
+  fs.writeFileSync(DEVICE_FILE, JSON.stringify(d, null, 2));
+  return d;
 }
 
 // mysql2 devuelve DATETIME como Date; JSON lo vuelve ISO '...+T...+Z' y MySQL
