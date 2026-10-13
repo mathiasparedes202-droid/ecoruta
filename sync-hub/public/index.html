@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>EcoRuta Sync Hub</title>
+<style>body{font-family:system-ui;margin:40px;background:#0f172a;color:#e2e8f0}code{background:#1e293b;padding:2px 6px;border-radius:6px}</style>
+</head>
+<body>
+<h1>EcoRuta Sync Hub</h1>
+<p>Servicio aparte de sincronización. Los sistemas se conectan con <code>X-System-Key</code>.</p>
+<ul>
+<li><code>GET /hub/health</code> (público)</li>
+<li><code>POST /hub/push</code> + <code>GET /hub/pull?since=&amp;limit=&amp;entity=</code> (con clave)</li>
+<li><code>GET /hub/stats</code> (con clave)</li>
+</ul>
+<p>Ver README para integrar un sistema.</p>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "ecoruta-sync-hub",
+  "version": "1.0.0",
+  "description": "Hub central de sincronización: servicio aparte al que otros sistemas web se conectan para intercambiar cambios sin duplicar.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node src/hub.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
+  }
+}
