@@ -25,6 +25,7 @@ require_once __DIR__ . '/src/controllers/clientes_controller.php';
 require_once __DIR__ . '/src/controllers/metrics_controller.php';
 require_once __DIR__ . '/src/controllers/turnos_controller.php';
 require_once __DIR__ . '/src/controllers/notificaciones_controller.php';
+require_once __DIR__ . '/src/controllers/facturacion_controller.php';
 require_once __DIR__ . '/src/routes/routes.php';
 
 applyCors();
@@ -219,6 +220,35 @@ if ($method === 'PATCH' && preg_match('#^/api/notificaciones/(\\d+)/leida$#', $p
 
 if ($method === 'GET' && $path === '/api/metrics') {
     getDailyMetrics();
+}
+
+// Sprint 4 — Facturación legal delivery (timbrados + facturas)
+if ($method === 'GET' && $path === '/api/timbrados') {
+    listarTimbradosController(requireAuth());
+}
+if ($method === 'POST' && $path === '/api/timbrados') {
+    crearTimbradoController(requireAuth());
+}
+if ($method === 'PUT' && preg_match('#^/api/timbrados/(\\d+)$#', $path, $matches)) {
+    actualizarTimbradoController(requireAuth(), (int) $matches[1]);
+}
+if ($method === 'GET' && $path === '/api/timbrados/vigente') {
+    timbradoVigenteController();
+}
+if ($method === 'POST' && preg_match('#^/api/pedidos/(\\d+)/factura$#', $path, $matches)) {
+    emitirFacturaController(requireAuth(), (int) $matches[1]);
+}
+if ($method === 'GET' && ($path === '/api/facturas' || $path === '/api/facturas/')) {
+    historialFacturasController();
+}
+if ($method === 'GET' && preg_match('#^/api/facturas/(\\d+)/kude$#', $path, $matches)) {
+    kudeFacturaController((int) $matches[1]);
+}
+if ($method === 'GET' && preg_match('#^/api/facturas/(\\d+)$#', $path, $matches)) {
+    verFacturaController((int) $matches[1]);
+}
+if ($method === 'POST' && preg_match('#^/api/facturas/(\\d+)/anular$#', $path, $matches)) {
+    anularFacturaController(requireAuth(), (int) $matches[1]);
 }
 
 // Sincronización offline (intermediario PC en sync-agent/).

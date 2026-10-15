@@ -7,6 +7,7 @@ require_once __DIR__ . '/../middleware/request.php';
 require_once __DIR__ . '/geografia.php';
 require_once __DIR__ . '/turnos_service.php';
 require_once __DIR__ . '/notificaciones_service.php';
+require_once __DIR__ . '/facturacion_service.php';
 
 /**
  * Tarifas declaradas para el cálculo de la tarifa ecológica.
@@ -429,6 +430,16 @@ function updateOrderStatus(int $orderId, array $body): array
             "El pedido #{$orderId} fue entregado al destinatario. Gracias por confiar en EcoRuta.",
             $orderId
         );
+    }
+
+    // Sprint 4 (HU-07): al entregarse, se emite sola la factura legal.
+    // Mejor esfuerzo: si no hay timbrado vigente, se registra y NO rompe la entrega.
+    if ($newStatus === 4) {
+        try {
+            emitirFacturaPorPedido($orderId, 'auto', $userId, [], false);
+        } catch (Throwable $fiscalError) {
+            error_log('Auto-factura pedido #' . $orderId . ': ' . $fiscalError->getMessage());
+        }
     }
 
     return ['message' => 'Estado del pedido actualizado'];
