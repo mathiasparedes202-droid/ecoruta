@@ -7,6 +7,8 @@ import {
   Store,
   UserCog,
   UserRound,
+  Receipt,
+  FileText,
 } from 'lucide-react';
 
 // Pages del Comerciante
@@ -15,6 +17,8 @@ import NewOrderPage from './PedidoPage.jsx';
 import MyOrdersPage from './MisPedidos.jsx';
 import CommercePage from './MiComercio.jsx';
 import ClientesPage from './ClientesPage.jsx';
+import FacturasPage from './FacturasPage.jsx';
+import TimbradosPage from './TimbradosPage.jsx';
 import AdminOverview from './AdminOverview.jsx';
 import AdminOrders from './AdminOrders.jsx';
 import AdminUsers from './AdminUsers.jsx';
@@ -51,6 +55,12 @@ const modules = {
       title: 'Mi comercio',
       text: 'Administra la información de tu comercio.',
       tone: 'teal'
+    },
+    {
+      key: 'facturas',
+      title: 'Mis facturas',
+      text: 'Historial, KuDE y anulaciones de tus comprobantes.',
+      tone: 'blue'
     }
   ],
 
@@ -93,6 +103,18 @@ const modules = {
       title: 'Métricas',
       text: 'Revisa impacto y actividad diaria.',
       tone: 'blue'
+    },
+    {
+      key: 'facturacion',
+      title: 'Facturación',
+      text: 'Facturas emitidas, KuDE y anulaciones.',
+      tone: 'teal'
+    },
+    {
+      key: 'timbrados',
+      title: 'Timbrados',
+      text: 'Vigencias, folios y alertas SET.',
+      tone: 'orange'
     }
   ]
 };
@@ -109,6 +131,9 @@ const moduleIcons = {
   'my-orders': PackageSearch,
   clientes: UserRound,
   commerce: Store,
+  facturas: Receipt,
+  facturacion: Receipt,
+  timbrados: FileText,
   users: UserCog,
   overview: LayoutDashboard
 };
@@ -176,6 +201,13 @@ export default function DashboardPage({ user, onLogout, onUserUpdate }) {
             />
           );
 
+        case 'facturas':
+          return (
+            <FacturasPage
+              user={user}
+            />
+          );
+
         default:
           return (
             <MerchantDashboard
@@ -206,6 +238,14 @@ export default function DashboardPage({ user, onLogout, onUserUpdate }) {
 
     if (Number(user.id_rol) === 3 && activeModule === 'orders') {
       return <AdminOrders user={user} />;
+    }
+
+    if (Number(user.id_rol) === 3 && activeModule === 'facturacion') {
+      return <FacturasPage user={user} />;
+    }
+
+    if (Number(user.id_rol) === 3 && activeModule === 'timbrados') {
+      return <TimbradosPage />;
     }
 
     return (
