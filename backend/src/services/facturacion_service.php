@@ -192,12 +192,20 @@ function emitirFacturaPorPedido(int $idPedido, string $origen = 'manual', int $u
         $dirRec = trim((string) ($receptor['direccion'] ?? ''));
         if ($rucRec === '') {
             if (!empty($p['id_cliente'])) {
-                $cli = $pdo->prepare('SELECT documento_identidad, nombresyapellidos, direccion FROM clientes WHERE id_cliente = :id LIMIT 1');
+                // Tolera esquemas de clientes distintos (local vs web).
+                $cols = $pdo->query('SHOW COLUMNS FROM clientes')->fetchAll(PDO::FETCH_COLUMN);
+                $sel = ['id_cliente'];
+                foreach (['documento_identidad' => 'documento', 'nombresyapellidos' => 'nombre_rs', 'nombre' => 'nombre_corto', 'direccion' => 'dir', 'ruc_ci' => 'ruc_alt'] as $real => $alias) {
+                    if (in_array($real, $cols, true)) {
+                        $sel[] = "`$real` AS `$alias`";
+                    }
+                }
+                $cli = $pdo->prepare('SELECT ' . implode(', ', $sel) . ' FROM clientes WHERE id_cliente = :id LIMIT 1');
                 $cli->execute(['id' => (int) $p['id_cliente']]);
                 if ($c = $cli->fetch(PDO::FETCH_ASSOC)) {
-                    $rucRec = trim((string) ($c['documento_identidad'] ?? ''));
-                    $rsRec = $rsRec !== '' ? $rsRec : trim((string) ($c['nombresyapellidos'] ?? ''));
-                    $dirRec = $dirRec !== '' ? $dirRec : trim((string) ($c['direccion'] ?? ''));
+                    $rucRec = trim((string) ($c['documento'] ?? $c['ruc_alt'] ?? ''));
+                    $rsRec = $rsRec !== '' ? $rsRec : trim((string) ($c['nombre_rs'] ?? $c['nombre_corto'] ?? ''));
+                    $dirRec = $dirRec !== '' ? $dirRec : trim((string) ($c['dir'] ?? ''));
                 }
             }
             if ($rsRec === '') {
