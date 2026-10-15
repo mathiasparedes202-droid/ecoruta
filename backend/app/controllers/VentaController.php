@@ -500,15 +500,21 @@ class VentaController extends Controller
             throw new \RuntimeException('No se pudo serializar la factura para el generador de PDF.');
         }
 
+        // El payload viaja en archivo (en Windows la línea de comandos lo partiría).
+        $inputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'factura_in_' . uniqid('', true) . '.json';
+        @file_put_contents($inputPath, $payload);
+
         $command = sprintf(
             'node %s --mode %s --input %s --output %s',
             escapeshellarg($scriptPath),
             escapeshellarg($mode),
-            escapeshellarg($payload),
+            escapeshellarg($inputPath),
             escapeshellarg($outputPath)
         );
 
         exec($command . ' 2>&1', $lines, $exitCode);
+
+        @unlink($inputPath);
 
         if ($exitCode !== 0 || !is_file($outputPath)) {
             $errorMessage = implode("\n", $lines);

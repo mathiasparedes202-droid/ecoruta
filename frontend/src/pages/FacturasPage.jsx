@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  fetchFacturas, fetchFactura, anularFactura, openKude, emitirFacturaPedido
+  fetchFacturas, fetchFactura, anularFactura, openKude, openFacturaHtml, openFacturaPdf, emitirFacturaPedido
 } from '../services/facturacionService.js';
 import { formatGs } from '../lib/format.js';
 
@@ -129,6 +129,7 @@ export default function FacturasPage({ user }) {
                 <td className="facturas-acciones">
                   <button type="button" onClick={() => verDetalle(f.id_factura)}>Ver</button>
                   <button type="button" onClick={() => openKude(f.id_factura)}>KuDE</button>
+                  <button type="button" onClick={() => openFacturaPdf(f.id_factura)}>PDF</button>
                   {f.estado === 'Vigente' && <button type="button" onClick={() => anular(f.id_factura)}>Anular</button>}
                 </td>
               </tr>
@@ -159,6 +160,8 @@ export default function FacturasPage({ user }) {
             <p><small>CDC (control interno): {String(detail.cdc || '').slice(0, 24)}…</small></p>
             <div className="facturas-acciones">
               <button type="button" className="primary-action" onClick={() => openKude(detail.id_factura)}>Abrir KuDE / Imprimir</button>
+              <button type="button" onClick={() => openFacturaHtml(detail.id_factura)}>Ver HTML</button>
+              <button type="button" onClick={() => openFacturaPdf(detail.id_factura)}>Descargar PDF</button>
               {detail.estado === 'Vigente' && <button type="button" onClick={() => anular(detail.id_factura)}>Anular</button>}
             </div>
             <h3>Auditoría</h3>

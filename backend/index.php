@@ -244,6 +244,12 @@ if ($method === 'GET' && ($path === '/api/facturas' || $path === '/api/facturas/
 if ($method === 'GET' && preg_match('#^/api/facturas/(\\d+)/kude$#', $path, $matches)) {
     kudeFacturaController((int) $matches[1]);
 }
+if ($method === 'GET' && preg_match('#^/api/facturas/(\\d+)/html$#', $path, $matches)) {
+    facturaHtmlController(requireAuth(), (int) $matches[1]);
+}
+if ($method === 'GET' && preg_match('#^/api/facturas/(\\d+)/pdf$#', $path, $matches)) {
+    facturaPdfController(requireAuth(), (int) $matches[1]);
+}
 if ($method === 'GET' && preg_match('#^/api/facturas/(\\d+)$#', $path, $matches)) {
     verFacturaController((int) $matches[1]);
 }

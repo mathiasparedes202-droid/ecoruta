@@ -70,8 +70,7 @@ function anularFacturaController(object $claims, int $id): never
 }
 
 function kudeFacturaController(int $id): never
-{
-    $fac = facturaConItems($id);
+{    $fac = facturaConItems($id);
     if (!$fac) {
         sendJson(['message' => 'Factura no encontrada'], 404);
     }
@@ -101,5 +100,150 @@ function kudeFacturaController(int $id): never
         . '<span class="muted">Gravada 10%: ' . $f($fac['gravada_10']) . ' · IVA 10%: ' . $f($fac['iva_10']) . '</span></p>'
         . '<p class="muted noprint">Usá Imprimir del navegador para guardar en PDF.</p>'
         . '</body></html>';
+    exit;
+}
+
+// ---- Motor factura-py (modelo del zip) para HTML/PDF ----
+// Construye el modelo normalizado que espera generate-factura.js
+// ({idVenta, emisor, factura, cliente, detalles[], resumen{}})
+// con datos REALES del timbrado y el pedido (sin hardcodes).
+function buildDeliveryFacturaModel(int $idFactura): array
+{
+    $fac = facturaConItems($idFactura);
+    if (!$fac) {
+        sendJson(['message' => 'Factura no encontrada'], 404);
+    }
+    $pdo = database();
+    $tim = $pdo->prepare('SELECT * FROM timbrados WHERE id_timbrado = :id LIMIT 1');
+    $tim->execute(['id' => (int) $fac['id_timbrado']]);
+    $t = $tim->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    $total = (float) $fac['total'];
+    $detalles = array_map(function ($it) {
+        $sub = (float) ($it['subtotal'] ?? 0);
+        $iva = (int) ($it['iva_tipo'] ?? 10);
+        return [
+            'idDetalleVenta' => $it['id_item'] ?? null,
+            'idProducto' => null,
+            'cantidad' => (float) ($it['cantidad'] ?? 1),
+            'descripcion' => $it['concepto'] ?? 'Servicio de reparto',
+            'precioUnitario' => (float) ($it['precio_unitario'] ?? 0),
+            'tipoIva' => $iva,
+            'exenta' => $iva === 0 ? $sub : 0,
+            'iva5' => $iva === 5 ? $sub : 0,
+            'iva10' => $iva === 10 ? $sub : 0,
+            'subtotal' => $sub,
+        ];
+    }, $fac['items'] ?? []);
+
+    return [
+        'idVenta' => (int) $fac['id_factura'],
+        'idPedido' => (int) $fac['id_pedido'],
+        'emisor' => [
+            'razonSocial' => $fac['razon_social_emisor'] ?? ($t['razon_social'] ?? 'EcoRuta S.A.'),
+            'ruc' => $fac['ruc_emisor'] ?? ($t['ruc'] ?? ''),
+            'direccion' => $t['direccion'] ?? '',
+            'telefono' => '',
+            'email' => '',
+            'timbrado' => $t['num_timbrado'] ?? '',
+            'vigenciaTimbrado' => $t['fecha_fin'] ?? '',
+            'establecimiento' => $t['establecimiento'] ?? '001',
+            'puntoExpedicion' => $t['punto_expedicion'] ?? '001',
+        ],
+        'factura' => [
+            'numeroFactura' => $fac['numero_completo'],
+            'numeroComprobante' => null,
+            'tipoComprobante' => 'Factura',
+            'timbrado' => $t['num_timbrado'] ?? '',
+            'fechaEmision' => $fac['fecha_emision'] ?? null,
+            'estado' => $fac['estado'] ?? 'Vigente',
+            'condicionVenta' => $fac['condicion_venta'] ?? 'Contado',
+            'plazo' => null,
+            'observaciones' => $fac['motivo_anulacion'] ?? null,
+        ],
+        'cliente' => [
+            'idCliente' => null,
+            'razonSocial' => $fac['razon_social_receptor'] ?? 'Consumidor Final',
+            'rucCi' => $fac['ruc_receptor'] ?? 'Sin documento',
+            'celular' => null,
+        ],
+        'detalles' => $detalles,
+        'resumen' => [
+            'subtotalExenta' => (float) ($fac['exenta'] ?? 0),
+            'subtotalIva5' => (float) ($fac['gravada_5'] ?? 0),
+            'subtotalIva10' => (float) ($fac['gravada_10'] ?? 0),
+            'iva5' => (float) ($fac['iva_5'] ?? 0),
+            'iva10' => (float) ($fac['iva_10'] ?? 0),
+            'totalIva' => (float) ($fac['iva_10'] ?? 0) + (float) ($fac['iva_5'] ?? 0),
+            'liquidacionIva5' => (float) ($fac['iva_5'] ?? 0),
+            'liquidacionIva10' => (float) ($fac['iva_10'] ?? 0),
+            'totalLiquidacion' => (float) ($fac['iva_10'] ?? 0) + (float) ($fac['iva_5'] ?? 0),
+            'totalFactura' => $total,
+        ],
+        // Extras propios (la plantilla los ignora; sirven al KuDE/API)
+        'cdc' => $fac['cdc'] ?? null,
+        'qrTexto' => $fac['qr_texto'] ?? null,
+    ];
+}
+
+function deliveryFacturaFile(int $idFactura, string $mode): string
+{
+    $baseDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'factura-py';
+    $scriptPath = $baseDir . DIRECTORY_SEPARATOR . 'generate-factura.js';
+    if (!is_file($scriptPath)) {
+        sendJson(['message' => 'Motor de facturas no instalado (falta factura-py)'], 501);
+    }
+    $model = buildDeliveryFacturaModel($idFactura);
+    $payload = json_encode($model, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($payload === false) {
+        sendJson(['message' => 'No se pudo serializar la factura'], 500);
+    }
+    // El payload viaja en archivo (en Windows la línea de comandos lo partiría).
+    $inputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'factura_in_' . uniqid('', true) . '.json';
+    @file_put_contents($inputPath, $payload);
+    $outputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'factura_' . uniqid('', true) . ($mode === 'pdf' ? '.pdf' : '.html');
+    $command = sprintf(
+        'node %s --mode %s --input %s --output %s',
+        escapeshellarg($scriptPath),
+        escapeshellarg($mode),
+        escapeshellarg($inputPath),
+        escapeshellarg($outputPath)
+    );
+    exec($command . ' 2>&1', $lines, $exitCode);
+    @unlink($inputPath);
+    if ($exitCode !== 0 || !is_file($outputPath)) {
+        $err = implode("\n", $lines);
+        if (stripos($err, 'Could not find Chrome') !== false || stripos($err, 'puppeteer') !== false) {
+            sendJson(['message' => 'PDF no disponible en este servidor (falta Chromium). Usa KuDE/HTML.'], 501);
+        }
+        sendJson(['message' => 'Error generando comprobante: ' . mb_substr(trim($err), 0, 300)], 500);
+    }
+    return $outputPath;
+}
+
+function facturaHtmlController(object $claims, int $id): never
+{
+    $tmp = deliveryFacturaFile($id, 'html');
+    $html = @file_get_contents($tmp);
+    @unlink($tmp);
+    if ($html === false) {
+        sendJson(['message' => 'No se pudo recuperar el HTML'], 500);
+    }
+    header('Content-Type: text/html; charset=UTF-8');
+    echo $html;
+    exit;
+}
+
+function facturaPdfController(object $claims, int $id): never
+{
+    $tmp = deliveryFacturaFile($id, 'pdf');
+    if (!is_file($tmp)) {
+        sendJson(['message' => 'No se pudo generar el PDF'], 500);
+    }
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: inline; filename="factura-' . $id . '.pdf"');
+    header('Content-Length: ' . filesize($tmp));
+    readfile($tmp);
+    @unlink($tmp);
     exit;
 }

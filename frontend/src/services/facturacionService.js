@@ -49,3 +49,16 @@ export function kudeUrl(id) {
 export function openKude(id) {
   window.open(kudeUrl(id), '_blank', 'noopener');
 }
+
+// HTML/PDF del motor factura-py (requieren login: se pasa access_token en query)
+function authedUrl(path) {
+  const token = localStorage.getItem('ecoruta_token');
+  const sep = path.includes('?') ? '&' : '?';
+  return `${API_BASE}${path}${sep}access_token=${encodeURIComponent(token || '')}`;
+}
+export function openFacturaHtml(id) {
+  window.open(authedUrl(`/api/facturas/${id}/html`), '_blank', 'noopener');
+}
+export function openFacturaPdf(id) {
+  window.open(authedUrl(`/api/facturas/${id}/pdf`), '_blank', 'noopener');
+}
