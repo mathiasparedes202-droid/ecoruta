@@ -19,12 +19,11 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo pdo_mysql zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# NOTA: este Dockerfile usa como contexto backend/, por lo que NO puede
-# copiar ../factura-py. Para PDF/HTML con motor Node en producción usá el
-# Dockerfile de la raíz del repo (COPY factura-py/ /var/www/factura-py/).
-# El endpoint HTML tiene fallback 100% PHP y sigue funcionando sin el motor;
-# el PDF requiere el Dockerfile raíz (o definir FACTURA_PY_PATH montando el
-# volumen con factura-py y correr `npm install` dentro).
+# NOTA: este Dockerfile usa como contexto backend/, por lo que el motor
+# factura-py se versiona duplicado en backend/factura-py (vendored de la
+# copia raíz /factura-py). Si cambiás el motor, actualizá ambas copias.
+# El endpoint HTML tiene fallback 100% PHP y funciona aun sin el motor;
+# el PDF requiere Node + este motor + Chromium (instalados arriba).
 ENV FACTURA_PY_PATH=/var/www/factura-py
 ENV FACTURA_NODE_BIN=node
 
@@ -44,13 +43,23 @@ COPY composer.json composer.lock* ./
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts || true
 
 # Copiar el resto del código del backend
+# (incluye backend/factura-py, copia vendored del motor factura-py de la raíz:
+#  este contexto no puede ver ../factura-py, por eso se versiona duplicado)
 COPY . /var/www/html/
+
+# Motor de facturas: llega a /var/www/html/factura-py vía el COPY anterior.
+# Se espeja a /var/www/factura-py (ruta de FACTURA_PY_PATH) y se instalan
+# dependencias. El HTML no necesita Chromium; el PDF sí (se intenta sin
+# romper el build si la descarga falla). Mantener sincronizado con /factura-py.
+RUN mkdir -p /var/www/factura-py && cp -r /var/www/html/factura-py/* /var/www/factura-py/ \
+    && cd /var/www/factura-py && npm install --no-audit --no-fund \
+    && (npx puppeteer browsers install chrome || true)
 
 # Generar autoload optimizado
 RUN composer dump-autoload --optimize --no-dev
 
 # Asignar permisos al usuario de Apache
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www/html /var/www/factura-py
 
 # Script de inicio compatible con el puerto dinámico de Render ($PORT)
 RUN echo '#!/bin/bash\n\
