@@ -6,13 +6,14 @@ FROM php:8.2-apache
 ENV ECORUTA_AUTH_FALLBACK=enabled
 
 # Instalar dependencias del sistema y extensiones de PHP requeridas
-# (incluye Node 22 + libs de Chromium para que factura-py genere HTML/PDF)
+# (incluye Node 22 + Chromium del sistema para que factura-py genere HTML/PDF)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     unzip \
     git \
     libzip-dev \
+    chromium \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 \
@@ -47,18 +48,22 @@ COPY factura-py/ /var/www/factura-py/
 RUN mkdir -p /var/www/html/factura-py && cp -r /var/www/factura-py/* /var/www/html/factura-py/ || true
 
 # Dependencias de factura-py (puppeteer). El modo HTML no necesita Chromium,
-# el PDF sí: se intenta descargar Chrome sin romper el build si falla.
-RUN cd /var/www/factura-py && npm install --no-audit --no-fund \
-    && (npx puppeteer browsers install chrome || true)
-
+# el PDF sí. Se usa el Chromium del sistema (visible para www-data) y se
+# deja la descarga de Puppeteer como respaldo en un caché compartido.
 ENV FACTURA_PY_PATH=/var/www/factura-py
 ENV FACTURA_NODE_BIN=node
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_CACHE_DIR=/var/www/.cache/puppeteer
+
+RUN cd /var/www/factura-py && npm install --no-audit --no-fund \
+    && (npx puppeteer browsers install chrome || true)
 
 # Generar autoload optimizado
 RUN composer dump-autoload --optimize --no-dev
 
-# Asignar permisos al usuario de Apache
-RUN chown -R www-data:www-data /var/www/html /var/www/factura-py
+# Asignar permisos al usuario de Apache (incluye el caché de Puppeteer)
+RUN mkdir -p /var/www/.cache/puppeteer \
+    && chown -R www-data:www-data /var/www/html /var/www/factura-py /var/www/.cache
 
 # Script de inicio compatible con el puerto dinámico de Render ($PORT)
 RUN echo '#!/bin/bash\n\

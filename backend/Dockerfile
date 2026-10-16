@@ -4,13 +4,14 @@ FROM php:8.2-apache
 ENV ECORUTA_AUTH_FALLBACK=enabled
 
 # Instalar dependencias del sistema y extensiones de PHP requeridas
-# (incluye Node 22 + libs de Chromium para factura-py; ver nota abajo)
+# (incluye Node 22 + Chromium del sistema para factura-py; ver nota abajo)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     unzip \
     git \
     libzip-dev \
+    chromium \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 \
@@ -26,6 +27,10 @@ RUN apt-get update && apt-get install -y \
 # el PDF requiere Node + este motor + Chromium (instalados arriba).
 ENV FACTURA_PY_PATH=/var/www/factura-py
 ENV FACTURA_NODE_BIN=node
+# Chromium del sistema (visible para www-data): el servicio lo usa vía
+# executablePath. El caché de Puppeteer queda como respaldo compartido.
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_CACHE_DIR=/var/www/.cache/puppeteer
 
 # Instalar Composer desde la imagen oficial
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -58,8 +63,9 @@ RUN mkdir -p /var/www/factura-py && cp -r /var/www/html/factura-py/* /var/www/fa
 # Generar autoload optimizado
 RUN composer dump-autoload --optimize --no-dev
 
-# Asignar permisos al usuario de Apache
-RUN chown -R www-data:www-data /var/www/html /var/www/factura-py
+# Asignar permisos al usuario de Apache (incluye el caché de Puppeteer)
+RUN mkdir -p /var/www/.cache/puppeteer \
+    && chown -R www-data:www-data /var/www/html /var/www/factura-py /var/www/.cache
 
 # Script de inicio compatible con el puerto dinámico de Render ($PORT)
 RUN echo '#!/bin/bash\n\
