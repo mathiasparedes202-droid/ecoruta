@@ -58,6 +58,57 @@ const formatearFecha = (fecha) => {
 };
 
 /**
+ * Convierte un entero (0..999.999.999) a letras en español mayúsculas.
+ */
+const numeroALetras = (n) => {
+  n = Math.round(Number(n) || 0);
+  if (n < 0 || n > 999999999) return String(n);
+  if (n === 0) return "CERO";
+  const U = ["", "UN", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE", "VEINTIÚN", "VEINTIDÓS", "VEINTITRÉS", "VEINTICUATRO", "VEINTICINCO", "VEINTISÉIS", "VEINTISIETE", "VEINTIOCHO", "VEINTINUEVE"];
+  const D = ["", "", "", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"];
+  const C = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"];
+  const t = (x) => {
+    if (x < 30) return U[x];
+    if (x < 100) { const d = Math.floor(x / 10), r = x % 10; return r === 0 ? D[d] : `${D[d]} Y ${U[r]}`; }
+    if (x === 100) return "CIEN";
+    const c = Math.floor(x / 100), r = x % 100;
+    return r === 0 ? C[c] : `${C[c]} ${t(r)}`;
+  };
+  const m = (x) => {
+    if (x < 1000) return t(x);
+    const miles = Math.floor(x / 1000), r = x % 1000;
+    const head = miles === 1 ? "MIL" : `${t(miles)} MIL`;
+    return r === 0 ? head : `${head} ${t(r)}`;
+  };
+  if (n < 1000000) return m(n);
+  const mill = Math.floor(n / 1000000), r = n % 1000000;
+  const head = mill === 1 ? "UN MILLÓN" : `${m(mill)} MILLONES`;
+  return r === 0 ? head : `${head} ${m(r)}`;
+};
+
+/**
+ * Monto en letras estilo comprobante paraguayo: ".... GUARANÍES NN/100".
+ */
+const montoEnLetras = (total) => {
+  const v = Number(total) || 0;
+  const entero = Math.floor(v);
+  const dec = Math.round((v - entero) * 100);
+  return `${numeroALetras(entero)} GUARANÍES ${String(dec).padStart(2, "0")}/100`;
+};
+
+/**
+ * Fecha y hora de emisión.
+ */
+const formatearFechaHora = (fecha) => {
+  if (!fecha) return "";
+  const f = new Date(fecha);
+  if (Number.isNaN(f.getTime())) return "";
+  const d = new Intl.DateTimeFormat("es-PY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(f);
+  const h = new Intl.DateTimeFormat("es-PY", { hour: "2-digit", minute: "2-digit", hour12: false }).format(f);
+  return `${d} ${h}`;
+};
+
+/**
  * Genera las filas de la tabla de detalles.
  *
  * @param {Array<Object>} detalles - Detalles normalizados.
@@ -67,7 +118,7 @@ const generarFilasDetalles = (detalles = []) => {
   if (!Array.isArray(detalles) || detalles.length === 0) {
     return `
       <tr>
-        <td colspan="6" class="sin-detalles">
+        <td colspan="7" class="sin-detalles">
           No existen productos registrados.
         </td>
       </tr>
@@ -80,6 +131,12 @@ const generarFilasDetalles = (detalles = []) => {
         <tr>
           <td class="centrado">
             ${escaparHtml(detalle.cantidad)}
+          </td>
+
+          <td class="centrado">
+            ${escaparHtml(
+              detalle.unidadMedida || "Servicio"
+            )}
           </td>
 
           <td class="descripcion">
@@ -191,6 +248,39 @@ const generarFacturaHtml = (factura) => {
             min-height: 280mm;
             border: 1.5px solid #000;
             padding: 8px;
+          }
+
+          .cinta-titulo {
+            background: #000;
+            color: #fff;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            padding: 5px;
+            margin-bottom: 8px;
+          }
+
+          .monto-letras {
+            border: 1px solid #000;
+            border-top: 0;
+            padding: 6px 8px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+          }
+
+          .verificacion {
+            margin-top: 10px;
+            border: 1px solid #000;
+            padding: 6px 8px;
+            font-size: 8px;
+            line-height: 1.5;
+            word-break: break-all;
+          }
+
+          .verificacion strong {
+            text-transform: uppercase;
           }
 
           .encabezado {
@@ -338,6 +428,10 @@ const generarFacturaHtml = (factura) => {
             width: 8%;
           }
 
+          .tabla-detalles .unidad {
+            width: 10%;
+          }
+
           .tabla-detalles .descripcion-columna {
             width: 40%;
           }
@@ -477,6 +571,10 @@ const generarFacturaHtml = (factura) => {
       <body>
         <main class="factura">
 
+          <div class="cinta-titulo">
+            FACTURA ELECTRÓNICA · KuDE — REPRESENTACIÓN IMPRESA
+          </div>
+
           ${
             datosFactura.estado === "Anulada"
               ? `
@@ -561,6 +659,13 @@ const generarFacturaHtml = (factura) => {
                 )}
               </p>
 
+              <p class="timbrado">
+                CDC CONTROL
+                ${escaparHtml(
+                  (factura.cdc || "").slice(0, 16)
+                )}
+              </p>
+
             </section>
 
           </header>
@@ -574,7 +679,7 @@ const generarFacturaHtml = (factura) => {
                   Fecha de emisión:
                 </span>
 
-                ${formatearFecha(
+                ${formatearFechaHora(
                   datosFactura.fechaEmision
                 )}
               </div>
@@ -651,6 +756,30 @@ const generarFacturaHtml = (factura) => {
 
             </div>
 
+            <div class="fila-informacion">
+
+              <div class="campo">
+                <span class="etiqueta">
+                  Dirección:
+                </span>
+
+                ${escaparHtml(
+                  cliente.direccion || ""
+                )}
+              </div>
+
+              <div class="campo">
+                <span class="etiqueta">
+                  Método de pago:
+                </span>
+
+                ${escaparHtml(
+                  datosFactura.metodoPago || ""
+                )}
+              </div>
+
+            </div>
+
           </section>
 
           <table class="tabla-detalles">
@@ -663,6 +792,13 @@ const generarFacturaHtml = (factura) => {
                   class="cantidad"
                 >
                   CANTIDAD
+                </th>
+
+                <th
+                  rowspan="2"
+                  class="unidad"
+                >
+                  UNIDAD
                 </th>
 
                 <th
@@ -711,7 +847,7 @@ const generarFacturaHtml = (factura) => {
               <tr class="fila-subtotal">
 
                 <td
-                  colspan="3"
+                  colspan="4"
                   class="etiqueta-subtotal"
                 >
                   SUBTOTALES
@@ -744,6 +880,51 @@ const generarFacturaHtml = (factura) => {
           <section class="total-pagar">
 
             <div class="total-titulo">
+              SUBTOTAL
+            </div>
+
+            <div class="total-monto">
+              Gs.
+              ${formatearMoneda(
+                resumen.totalFactura
+              )}
+            </div>
+
+          </section>
+
+          <section class="total-pagar">
+
+            <div class="total-titulo">
+              DESCUENTO
+            </div>
+
+            <div class="total-monto">
+              Gs.
+              ${formatearMoneda(
+                resumen.descuento || 0
+              )}
+            </div>
+
+          </section>
+
+          <section class="total-pagar">
+
+            <div class="total-titulo">
+              IVA 10 %
+            </div>
+
+            <div class="total-monto">
+              Gs.
+              ${formatearMoneda(
+                resumen.iva10
+              )}
+            </div>
+
+          </section>
+
+          <section class="total-pagar">
+
+            <div class="total-titulo">
               TOTAL A PAGAR
             </div>
 
@@ -755,6 +936,13 @@ const generarFacturaHtml = (factura) => {
             </div>
 
           </section>
+
+          <div class="monto-letras">
+            SON: ${escaparHtml(
+              montoEnLetras(resumen.totalFactura)
+            )}
+            ${datosFactura.metodoPago ? ` · MÉTODO DE PAGO: ${escaparHtml(datosFactura.metodoPago).toUpperCase()}` : ""}
+          </div>
 
           <section class="liquidacion">
 
@@ -811,6 +999,18 @@ const generarFacturaHtml = (factura) => {
             </div>
 
           </footer>
+
+          <div class="verificacion">
+            <strong>Sello digital (control interno):</strong>
+            ${escaparHtml(factura.cdc || "—")}
+            <br>
+            <strong>Código de verificación:</strong>
+            ${escaparHtml(factura.qrTexto || "—")}
+            <br>
+            <strong>Timbrado vigente hasta:</strong>
+            ${escaparHtml(emisor.vigenciaTimbrado || "—")}
+            — Esta es una representación impresa del documento tributario electrónico.
+          </div>
 
         </main>
       </body>

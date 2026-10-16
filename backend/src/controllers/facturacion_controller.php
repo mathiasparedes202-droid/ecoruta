@@ -117,6 +117,9 @@ function buildDeliveryFacturaModel(int $idFactura): array
     $tim = $pdo->prepare('SELECT * FROM timbrados WHERE id_timbrado = :id LIMIT 1');
     $tim->execute(['id' => (int) $fac['id_timbrado']]);
     $t = $tim->fetch(PDO::FETCH_ASSOC) ?: [];
+    $ped = $pdo->prepare('SELECT metodo_pago FROM pedidos WHERE id_pedido = :id LIMIT 1');
+    $ped->execute(['id' => (int) $fac['id_pedido']]);
+    $metodoPago = $ped->fetchColumn() ?: 'efectivo';
 
     $total = (float) $fac['total'];
     $detalles = array_map(function ($it) {
@@ -126,6 +129,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             'idDetalleVenta' => $it['id_item'] ?? null,
             'idProducto' => null,
             'cantidad' => (float) ($it['cantidad'] ?? 1),
+            'unidadMedida' => 'Servicio',
             'descripcion' => $it['concepto'] ?? 'Servicio de reparto',
             'precioUnitario' => (float) ($it['precio_unitario'] ?? 0),
             'tipoIva' => $iva,
@@ -158,6 +162,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             'fechaEmision' => $fac['fecha_emision'] ?? null,
             'estado' => $fac['estado'] ?? 'Vigente',
             'condicionVenta' => $fac['condicion_venta'] ?? 'Contado',
+            'metodoPago' => ucfirst((string) $metodoPago),
             'plazo' => null,
             'observaciones' => $fac['motivo_anulacion'] ?? null,
         ],
@@ -166,6 +171,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             'razonSocial' => $fac['razon_social_receptor'] ?? 'Consumidor Final',
             'rucCi' => $fac['ruc_receptor'] ?? 'Sin documento',
             'celular' => null,
+            'direccion' => $fac['direccion_receptor'] ?? '',
         ],
         'detalles' => $detalles,
         'resumen' => [
@@ -178,6 +184,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             'liquidacionIva5' => (float) ($fac['iva_5'] ?? 0),
             'liquidacionIva10' => (float) ($fac['iva_10'] ?? 0),
             'totalLiquidacion' => (float) ($fac['iva_10'] ?? 0) + (float) ($fac['iva_5'] ?? 0),
+            'descuento' => 0,
             'totalFactura' => $total,
         ],
         // Extras propios (la plantilla los ignora; sirven al KuDE/API)
