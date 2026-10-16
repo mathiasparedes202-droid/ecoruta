@@ -378,24 +378,33 @@ function syncApplyOnePedido(PDO $pdo, array $p, int $usuarioId): array
             $ins->execute($params);
             $idPedido = (int) $pdo->lastInsertId();
 
-            if (syncTableExists($pdo, 'historial_estados') && $usuarioId > 0) {
-                $hist = $pdo->prepare(
-                    'INSERT INTO historial_estados (id_pedido, id_estado_anterior, id_estado_nuevo, id_usuario_cambio, observacion)
-                     VALUES (:pedido, NULL, 1, :user, :note)'
-                );
-                $hist->execute([
-                    'pedido' => $idPedido,
-                    'user' => $usuarioId,
-                    'note' => 'Pedido sincronizado desde local (offline)',
-                ]);
+                if (syncTableExists($pdo, 'historial_estados') && $usuarioId > 0) {
+                    $hist = $pdo->prepare(
+                        'INSERT INTO historial_estados (id_pedido, id_estado_anterior, id_estado_nuevo, id_usuario_cambio, observacion)
+                         VALUES (:pedido, NULL, 1, :user, :note)'
+                    );
+                    $hist->execute([
+                        'pedido' => $idPedido,
+                        'user' => $usuarioId,
+                        'note' => 'Pedido sincronizado desde local (offline)',
+                    ]);
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
             }
-            $pdo->commit();
-        } catch (Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
 
-        return [
+            // El pedido que llega por sync también nace facturado en destino
+            // (origen 'sync'). Idempotente: si ya tenía, no duplica.
+            try {
+                require_once __DIR__ . '/facturacion_service.php';
+                emitirFacturaPorPedido($idPedido, 'sync', $usuarioId, [], false);
+            } catch (Throwable $fiscalError) {
+                error_log('Auto-factura sync pedido #' . $idPedido . ': ' . $fiscalError->getMessage());
+            }
+
+            return [
             'sync_uuid' => $uuid,
             'status' => 'applied',
             'id_pedido' => $idPedido,

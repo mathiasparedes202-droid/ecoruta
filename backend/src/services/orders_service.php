@@ -272,6 +272,16 @@ function createOrder(array $body): array
         $newId
     );
 
+    // Sprint 4: al registrarse el pedido se emite sola su factura (origen auto).
+    // Mejor esfuerzo: sin timbrado vigente no hay factura y el pedido igual nace.
+    // La factura fiscal nace UNA vez por base con timbrado; el push de sync
+    // emite en destino con origen 'sync' (idempotente por UNIQUE id_pedido).
+    try {
+        emitirFacturaPorPedido($newId, 'auto', $userId, [], false);
+    } catch (Throwable $fiscalError) {
+        error_log('Auto-factura al crear pedido #' . $newId . ': ' . $fiscalError->getMessage());
+    }
+
     return [
         'id_pedido' => $newId,
         'sync_uuid' => $syncUuid !== '' ? $syncUuid : null,
