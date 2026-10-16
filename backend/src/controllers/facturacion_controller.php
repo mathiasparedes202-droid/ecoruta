@@ -103,6 +103,25 @@ function kudeFacturaController(int $id): never
     exit;
 }
 
+// Logo del emisor como data URI (el motor no tiene acceso a archivos del servidor
+// y en Render solo existe backend/). Si falta, la plantilla muestra el recuadro.
+function facturaLogoDataUrl(): ?string
+{
+    $candidates = [
+        dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'EcoRutaLogo.png',
+        dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'frontend' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'EcoRutaLogo.png',
+    ];
+    foreach ($candidates as $file) {
+        if (is_file($file) && filesize($file) > 100 && filesize($file) < 3 * 1024 * 1024) {
+            $bin = @file_get_contents($file);
+            if ($bin !== false) {
+                return 'data:image/png;base64,' . base64_encode($bin);
+            }
+        }
+    }
+    return null;
+}
+
 // ---- Motor factura-py (modelo del zip) para HTML/PDF ----
 // Construye el modelo normalizado que espera generate-factura.js
 // ({idVenta, emisor, factura, cliente, detalles[], resumen{}})
@@ -149,6 +168,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             'direccion' => $t['direccion'] ?? '',
             'telefono' => '',
             'email' => '',
+            'logoDataUrl' => facturaLogoDataUrl(),
             'timbrado' => $t['num_timbrado'] ?? '',
             'vigenciaTimbrado' => $t['fecha_fin'] ?? '',
             'establecimiento' => $t['establecimiento'] ?? '001',

@@ -451,6 +451,7 @@ class VentaController extends Controller
                 'direccion' => 'Ruta Quinta',
                 'telefono' => '+595 991 491 815',
                 'email' => 'camilavargas@hotmail.com',
+                'logoDataUrl' => $this->logoDataUrl(),
                 'timbrado' => $venta->timbrado ?? '',
                 'vigenciaTimbrado' => '',
                 'establecimiento' => '001',
@@ -505,6 +506,22 @@ class VentaController extends Controller
         foreach ($cands as $c) {
             if (is_string($c) && $c !== '' && is_file($c)) {
                 return $c;
+            }
+        }
+        return null;
+    }
+
+    private function logoDataUrl(): ?string
+    {
+        $candidates = [
+            dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'EcoRutaLogo.png',
+        ];
+        foreach ($candidates as $file) {
+            if (is_file($file) && filesize($file) > 100 && filesize($file) < 3 * 1024 * 1024) {
+                $bin = @file_get_contents($file);
+                if ($bin !== false) {
+                    return 'data:image/png;base64,' . base64_encode($bin);
+                }
             }
         }
         return null;

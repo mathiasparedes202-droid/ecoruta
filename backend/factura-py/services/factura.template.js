@@ -591,7 +591,9 @@ const generarFacturaHtml = (factura) => {
               <div class="emisor-superior">
 
                 <div class="logo">
-                  LOGO
+                  ${emisor.logoDataUrl
+                    ? `<img src="${emisor.logoDataUrl}" alt="Logo" style="max-width:56px;max-height:56px;">`
+                    : "LOGO"}
                 </div>
 
                 <div class="datos-emisor">
