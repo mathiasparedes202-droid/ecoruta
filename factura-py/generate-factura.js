@@ -4,7 +4,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const template = require('./services/factura.template');
-const pdfService = require('./services/factura-pdf.service');
 
 function argsOf(argv) {
   const args = {};
@@ -30,6 +29,8 @@ async function main() {
   if (args.mode === 'html') {
     fs.writeFileSync(output, template.generarFacturaHtml(factura), 'utf8');
   } else {
+    // Carga perezosa: el modo HTML no necesita puppeteer/Chromium instalado.
+    const pdfService = require('./services/factura-pdf.service');
     fs.writeFileSync(output, await pdfService.generarPdf(factura));
   }
 }

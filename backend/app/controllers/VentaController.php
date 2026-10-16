@@ -489,10 +489,34 @@ class VentaController extends Controller
         ];
     }
 
+    private function locateFacturaPyScript(): ?string
+    {
+        $cands = [];
+        $env = getenv('FACTURA_PY_PATH');
+        if (is_string($env) && $env !== '') {
+            $env = rtrim($env, "/\\");
+            $cands[] = $env . DIRECTORY_SEPARATOR . 'generate-factura.js';
+            $cands[] = $env;
+        }
+        $cands[] = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'factura-py' . DIRECTORY_SEPARATOR . 'generate-factura.js';
+        $cands[] = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'factura-py' . DIRECTORY_SEPARATOR . 'generate-factura.js';
+        $cands[] = '/var/www/factura-py/generate-factura.js';
+        $cands[] = '/var/www/html/factura-py/generate-factura.js';
+        foreach ($cands as $c) {
+            if (is_string($c) && $c !== '' && is_file($c)) {
+                return $c;
+            }
+        }
+        return null;
+    }
+
     private function generateFacturaFile(array $factura, string $mode): string
     {
-        $baseDir = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'factura-py';
-        $scriptPath = $baseDir . DIRECTORY_SEPARATOR . 'generate-factura.js';
+        $scriptPath = $this->locateFacturaPyScript();
+        if ($scriptPath === null) {
+            throw new \RuntimeException('Motor de facturas no disponible en este servidor (falta factura-py o Node). Usa KuDE/HTML.');
+        }
+        $nodeBin = getenv('FACTURA_NODE_BIN') ?: 'node';
         $outputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'factura_' . uniqid('', true) . ($mode === 'pdf' ? '.pdf' : '.html');
         $payload = json_encode($factura, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
@@ -505,7 +529,8 @@ class VentaController extends Controller
         @file_put_contents($inputPath, $payload);
 
         $command = sprintf(
-            'node %s --mode %s --input %s --output %s',
+            '%s %s --mode %s --input %s --output %s',
+            $nodeBin,
             escapeshellarg($scriptPath),
             escapeshellarg($mode),
             escapeshellarg($inputPath),
