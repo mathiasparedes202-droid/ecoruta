@@ -10,7 +10,7 @@ export default function FacturasPage({ user }) {
   const isMerchant = Number(user?.id_rol) === 1;
   const commerceId = isMerchant ? Number(user?.id_comercio || user?.id_usuario || 0) : 0;
 
-  const [filtros, setFiltros] = useState({ desde: '', hasta: '', estado: '', numero: '' });
+  const [filtros, setFiltros] = useState({ desde: '', hasta: '', estado: '', pago: '', numero: '' });
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,9 +88,16 @@ export default function FacturasPage({ user }) {
             <option value="Anulada">Anuladas</option>
           </select>
         </label>
+        <label>Pago
+          <select value={filtros.pago} onChange={(e) => set('pago', e.target.value)}>
+            <option value="">Todos</option>
+            <option value="1">Pagados</option>
+            <option value="0">Pendientes de pago</option>
+          </select>
+        </label>
         <label>N° comprobante <input value={filtros.numero} onChange={(e) => set('numero', e.target.value)} placeholder="001-001-…" /></label>
         <button type="button" className="primary-action" onClick={() => load()}>Aplicar</button>
-        <button type="button" onClick={() => { const f = { desde: '', hasta: '', estado: '', numero: '' }; setFiltros(f); load(f); }}>Limpiar</button>
+        <button type="button" onClick={() => { const f = { desde: '', hasta: '', estado: '', pago: '', numero: '' }; setFiltros(f); load(f); }}>Limpiar</button>
       </div>
 
       {!isMerchant && (
@@ -115,7 +122,7 @@ export default function FacturasPage({ user }) {
       ) : (
         <table className="facturas-tabla">
           <thead>
-            <tr><th>N°</th><th>Pedido</th><th>Receptor</th><th>Emisión</th><th>Total</th><th>Estado</th><th></th></tr>
+            <tr><th>N°</th><th>Pedido</th><th>Receptor</th><th>Emisión</th><th>Total</th><th>Estado</th><th>Pago</th><th></th></tr>
           </thead>
           <tbody>
             {rows.map((f) => (
@@ -126,6 +133,7 @@ export default function FacturasPage({ user }) {
                 <td>{String(f.fecha_emision || '').slice(0, 16).replace('T', ' ')}</td>
                 <td>₲ {formatGs(f.total)}</td>
                 <td><span className={`facturas-estado facturas-estado--${f.estado === 'Vigente' ? 'ok' : 'anulada'}`}>{f.estado}</span></td>
+                <td><span className={`facturas-estado facturas-estado--${Number(f.pedido_pagado) === 1 ? 'ok' : 'pendiente'}`}>{Number(f.pedido_pagado) === 1 ? 'Pagado' : 'Pendiente'}</span></td>
                 <td className="facturas-acciones">
                   <button type="button" onClick={() => verDetalle(f.id_factura)}>Ver</button>
                   <button type="button" onClick={() => openKude(f.id_factura)}>KuDE</button>
@@ -143,7 +151,7 @@ export default function FacturasPage({ user }) {
           <div className="account-modal facturas-detalle">
             <button className="auth-close" type="button" onClick={() => setDetail(null)}>x</button>
             <h2>Factura {detail.numero_completo}</h2>
-            <p>Estado: <strong>{detail.estado}</strong> · Emisión: {String(detail.fecha_emision || '').slice(0, 19).replace('T', ' ')}</p>
+            <p>Estado: <strong>{detail.estado}</strong> · Pago: <strong>{Number(detail.pedido_pagado) === 1 ? 'Pagado' : 'Pendiente de pago'}</strong> · Emisión: {String(detail.fecha_emision || '').slice(0, 19).replace('T', ' ')}</p>
             <p>Receptor: {detail.razon_social_receptor} — RUC/CI: {detail.ruc_receptor || '—'}</p>
             <table className="facturas-tabla">
               <thead><tr><th>Concepto</th><th>Cant.</th><th>P. unit.</th><th>Subtotal</th></tr></thead>

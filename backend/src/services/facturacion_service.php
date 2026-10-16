@@ -313,12 +313,17 @@ function historialFacturas(array $f): array
         $where[] = 'f.numero_completo LIKE :numero';
         $params['numero'] = '%' . trim((string) $f['numero']) . '%';
     }
+    if (isset($f['pago']) && in_array((string) $f['pago'], ['0', '1'], true)) {
+        $where[] = 'p.pagado = :pagado';
+        $params['pagado'] = (int) $f['pago'];
+    }
     if (!empty($f['id_comercio'])) {
         $where[] = 'p.id_comercio = :comercio';
         $params['comercio'] = (int) $f['id_comercio'];
     }
     $limit = max(1, min(500, (int) ($f['limit'] ?? 100)));
-    $sql = 'SELECT f.*, p.id_comercio, p.direccion_destino
+    $sql = 'SELECT f.*, p.id_comercio, p.direccion_destino, p.pagado AS pedido_pagado,
+                   p.fecha_pago AS pedido_fecha_pago, p.metodo_pago AS pedido_metodo_pago
             FROM facturas f JOIN pedidos p ON p.id_pedido = f.id_pedido';
     if ($where) {
         $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -338,6 +343,12 @@ function facturaConItems(int $idFactura): ?array
     if (!$fac) {
         return null;
     }
+    $ped = $pdo->prepare('SELECT pagado, fecha_pago, metodo_pago FROM pedidos WHERE id_pedido = :id LIMIT 1');
+    $ped->execute(['id' => (int) $fac['id_pedido']]);
+    $pago = $ped->fetch(PDO::FETCH_ASSOC) ?: [];
+    $fac['pedido_pagado'] = isset($pago['pagado']) ? (int) $pago['pagado'] : 0;
+    $fac['pedido_fecha_pago'] = $pago['fecha_pago'] ?? null;
+    $fac['pedido_metodo_pago'] = $pago['metodo_pago'] ?? null;
     $it = $pdo->prepare('SELECT * FROM factura_items WHERE id_factura = :id ORDER BY id_item');
     $it->execute(['id' => $idFactura]);
     $fac['items'] = $it->fetchAll(PDO::FETCH_ASSOC);
