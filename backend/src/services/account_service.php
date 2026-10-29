@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/jwt.php';
 require_once __DIR__ . '/../middleware/cors.php';
 require_once __DIR__ . '/../middleware/request.php';
 require_once __DIR__ . '/../../vendor/autoload.php';
@@ -243,7 +244,9 @@ function resetPassword(array $body): array
 function issueToken(array $user): string
 {
     $issuedAt = time();
-    $secret = $_ENV['JWT_SECRET'] ?? getenv('JWT_SECRET') ?: '721181d4304ecbe50c420aada6df6a4592f0213e264e764f3f2f2aee86abe019';
+    // Mismo secreto que requireAuth (src/config/jwt.php): si no coinciden, el
+    // token emitido acá no se podría validar al descargar la factura.
+    $secret = jwtSecret();
     return JWT::encode([
         'iss' => $_ENV['APP_URL'] ?? 'http://localhost:8000',
         'iat' => $issuedAt,

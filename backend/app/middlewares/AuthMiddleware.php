@@ -2,6 +2,10 @@
 
 namespace App\Middlewares;
 
+// Fuente única del secreto JWT: la misma que usa el login y el middleware de
+// la API delivery (src/), para que un token emitido se valide en todas partes.
+require_once __DIR__ . '/../../src/config/jwt.php';
+
 use Core\Request;
 use Core\Response;
 use Firebase\JWT\JWT;
@@ -35,11 +39,8 @@ class AuthMiddleware
         }
 
         try {
-            $secret = $_ENV['JWT_SECRET'] ?? null;
-
-            if (!$secret) {
-                throw new Exception('JWT_SECRET no definido');
-            }
+            // Mismo secreto que emite el login (src/config/jwt.php).
+            $secret = jwtSecret();
 
             // Decodificar token
             $decoded = JWT::decode($token, new Key($secret, 'HS256'));
