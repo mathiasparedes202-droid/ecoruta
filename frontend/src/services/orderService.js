@@ -1,11 +1,12 @@
 import QRCode from 'qrcode';
 import { API_BASE } from './env';
+import { authenticatedFetch } from './authSession';
 
 export const ORDERS_STORAGE_KEY = 'ecoruta_orders';
 
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('ecoruta_token');
-  const response = await fetch(`${API_BASE}/api${path}`, {
+  const response = await authenticatedFetch(`${API_BASE}/api${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

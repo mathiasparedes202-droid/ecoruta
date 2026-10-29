@@ -85,11 +85,48 @@ function anularFacturaController(object $claims, int $id): never
     sendJson(anularFactura($id, (string) ($body['motivo'] ?? ''), (int) ($claims->sub ?? 0)));
 }
 
+function normalizarImportesFactura(array $fac, float $tarifaPedido): array
+{
+    $total = (float) ($fac['total'] ?? 0);
+    $totalR = (int) round($total);
+    $iva10R = (int) round((float) ($fac['iva_10'] ?? 0));
+    $iva5R = (int) round((float) ($fac['iva_5'] ?? 0));
+    $exentaR = (int) round((float) ($fac['exenta'] ?? 0));
+    $grav5R = (int) round((float) ($fac['gravada_5'] ?? 0));
+
+    $totalConIvaAgregado = $tarifaPedido + round($tarifaPedido * 0.10, 2);
+    if (
+        $tarifaPedido > 0 &&
+        $total > $tarifaPedido &&
+        abs($total - $totalConIvaAgregado) < 0.02
+    ) {
+        $totalR = (int) round($tarifaPedido);
+        $iva10R = (int) round($totalR / 11);
+        $iva5R = 0;
+        $exentaR = 0;
+        $grav5R = 0;
+    }
+
+    return [
+        'total' => $totalR,
+        'iva10' => $iva10R,
+        'iva5' => $iva5R,
+        'exenta' => $exentaR,
+        'gravada5' => $grav5R,
+        'gravada10' => max(0, $totalR - $iva10R - $iva5R - $exentaR - $grav5R),
+    ];
+}
+
 function kudeFacturaController(int $id): never
-{    $fac = facturaConItems($id);
+{
+    $fac = facturaConItems($id);
     if (!$fac) {
         sendJson(['message' => 'Factura no encontrada'], 404);
     }
+    $pedido = database()->prepare('SELECT tarifa_ecologica FROM pedidos WHERE id_pedido = :id LIMIT 1');
+    $pedido->execute(['id' => (int) $fac['id_pedido']]);
+    $tarifaPedido = (float) ($pedido->fetchColumn() ?: 0);
+    $importes = normalizarImportesFactura($fac, $tarifaPedido);
     // QR en vivo: siempre apunta al link que reabre esta factura (no depende
     // del texto guardado, que en facturas antiguas era solo un código seco).
     $qrLink = facturaPublicUrl($id);
@@ -101,7 +138,7 @@ function kudeFacturaController(int $id): never
             $suma10 += (float) ($it['subtotal'] ?? 0);
         }
     }
-    $gravada10 = (float) ($fac['gravada_10'] ?? 0);
+    $gravada10 = (float) $importes['gravada10'];
     $factor = ($suma10 > 0 && $gravada10 > 0 && abs($suma10 - $gravada10) > 0.01) ? ($gravada10 / $suma10) : 1.0;
     $rows = '';
     foreach (($fac['items'] ?? []) as $it) {
@@ -124,8 +161,8 @@ function kudeFacturaController(int $id): never
         . htmlspecialchars((string) ($fac['ruc_receptor'] ?? '—')) . '<br>'
         . '<strong>Emisión:</strong> ' . htmlspecialchars((string) $fac['fecha_emision']) . ' · <strong>CDC (control interno):</strong> <small>' . htmlspecialchars(substr((string) $fac['cdc'], 0, 24)) . '…</small></p>'
         . '<table><tr><th>Concepto</th><th>Cant.</th><th>P. unitario</th><th>Subtotal</th></tr>' . $rows . '</table>'
-        . '<p style="text-align:right"><strong>Total: ' . $f($fac['total_factura'] ?? $fac['total']) . '</strong><br>'
-        . '<span class="muted">Gravada 10%: ' . $f($fac['gravada_10']) . ' · IVA 10%: ' . $f($fac['iva_10']) . '</span></p>'
+        . '<p style="text-align:right"><strong>Total: ' . $f($importes['total']) . '</strong><br>'
+        . '<span class="muted">Gravada 10%: ' . $f($importes['gravada10']) . ' · IVA 10%: ' . $f($importes['iva10']) . '</span></p>'
         . '<p class="muted noprint">Usá Imprimir del navegador para guardar en PDF.</p>'
         . '</body></html>';
     exit;
@@ -164,11 +201,19 @@ function buildDeliveryFacturaModel(int $idFactura): array
     $tim = $pdo->prepare('SELECT * FROM timbrados WHERE id_timbrado = :id LIMIT 1');
     $tim->execute(['id' => (int) $fac['id_timbrado']]);
     $t = $tim->fetch(PDO::FETCH_ASSOC) ?: [];
-    $ped = $pdo->prepare('SELECT metodo_pago FROM pedidos WHERE id_pedido = :id LIMIT 1');
+    $ped = $pdo->prepare('SELECT metodo_pago, tarifa_ecologica FROM pedidos WHERE id_pedido = :id LIMIT 1');
     $ped->execute(['id' => (int) $fac['id_pedido']]);
-    $metodoPago = $ped->fetchColumn() ?: 'efectivo';
+    $pedido = $ped->fetch(PDO::FETCH_ASSOC) ?: [];
+    $metodoPago = $pedido['metodo_pago'] ?? 'efectivo';
+    $importes = normalizarImportesFactura($fac, (float) ($pedido['tarifa_ecologica'] ?? 0));
+    $totalR = $importes['total'];
+    $iva10R = $importes['iva10'];
+    $iva5R = $importes['iva5'];
+    $exentaR = $importes['exenta'];
+    $grav5R = $importes['gravada5'];
+    $descuentoR = 0;
+    $grav10R = $importes['gravada10'];
 
-    $total = (float) $fac['total'];
     // Normaliza items: los emitidos antes del fix guardaban el TOTAL (con IVA)
     // en el ítem; se re-escalan a la gravada real para que las columnas cuadren.
     $suma10 = 0.0;
@@ -177,8 +222,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             $suma10 += (float) ($it['subtotal'] ?? 0);
         }
     }
-    $gravada10 = (float) ($fac['gravada_10'] ?? 0);
-    $factor = ($suma10 > 0 && $gravada10 > 0 && abs($suma10 - $gravada10) > 0.01) ? ($gravada10 / $suma10) : 1.0;
+    $factor = ($suma10 > 0 && $grav10R > 0 && abs($suma10 - $grav10R) > 0.01) ? ($grav10R / $suma10) : 1.0;
     $detalles = array_map(function ($it) use ($factor) {
         $sub = (float) ($it['subtotal'] ?? 0) * $factor;
         $iva = (int) ($it['iva_tipo'] ?? 10);
@@ -233,17 +277,17 @@ function buildDeliveryFacturaModel(int $idFactura): array
         ],
         'detalles' => $detalles,
         'resumen' => [
-            'subtotalExenta' => (float) ($fac['exenta'] ?? 0),
-            'subtotalIva5' => (float) ($fac['gravada_5'] ?? 0),
-            'subtotalIva10' => (float) ($fac['gravada_10'] ?? 0),
-            'iva5' => (float) ($fac['iva_5'] ?? 0),
-            'iva10' => (float) ($fac['iva_10'] ?? 0),
-            'totalIva' => (float) ($fac['iva_10'] ?? 0) + (float) ($fac['iva_5'] ?? 0),
-            'liquidacionIva5' => (float) ($fac['iva_5'] ?? 0),
-            'liquidacionIva10' => (float) ($fac['iva_10'] ?? 0),
-            'totalLiquidacion' => (float) ($fac['iva_10'] ?? 0) + (float) ($fac['iva_5'] ?? 0),
-            'descuento' => 0,
-            'totalFactura' => $total,
+            'subtotalExenta' => (float) $exentaR,
+            'subtotalIva5' => (float) $grav5R,
+            'subtotalIva10' => (float) $grav10R,
+            'iva5' => (float) $iva5R,
+            'iva10' => (float) $iva10R,
+            'totalIva' => (float) ($iva10R + $iva5R),
+            'liquidacionIva5' => (float) $iva5R,
+            'liquidacionIva10' => (float) $iva10R,
+            'totalLiquidacion' => (float) ($iva10R + $iva5R),
+            'descuento' => (float) $descuentoR,
+            'totalFactura' => (float) $totalR,
         ],
         // Extras propios (la plantilla los ignora; sirven al KuDE/API)
         'cdc' => $fac['cdc'] ?? null,

@@ -4,20 +4,71 @@ import AuthPanel from '../components/AuthPanel.jsx';
 import DashboardPage from '../pages/DashboardPage.jsx';
 import LoginPage from '../pages/LoginPage.jsx';
 import Recupercion_contrasena from '../pages/Recupercion_contrasena.jsx';
+import { clearAuthSession, endAuthSession, getTokenExpiration } from '../services/authSession.js';
+
+function getStoredUser() {
+  const token = localStorage.getItem('ecoruta_token');
+  const expiresAt = token ? getTokenExpiration(token) : null;
+
+  if (!token || !expiresAt || expiresAt <= Date.now()) {
+    clearAuthSession();
+    return null;
+  }
+
+  try {
+    return JSON.parse(localStorage.getItem('ecoruta_user') || 'null');
+  } catch {
+    clearAuthSession();
+    return null;
+  }
+}
 
 export default function App() {
   const [showAuth, setShowAuth] = useState(false);
-  const [user, setUser] = useState(() => {
-    const token = localStorage.getItem('ecoruta_token');
-    return token ? JSON.parse(localStorage.getItem('ecoruta_user') || 'null') : null;
-  });
+  const [user, setUser] = useState(getStoredUser);
   const [accountOpen, setAccountOpen] = useState(false);
 
   useEffect(() => {
-    const handleAuthRequired = () => setUser(null);
+    const handleAuthRequired = () => {
+      clearAuthSession();
+      setUser(null);
+    };
+    const handleStorage = (event) => {
+      if (event.key === 'ecoruta_token' && !event.newValue) {
+        setUser(null);
+      }
+    };
     window.addEventListener('ecoruta-auth-required', handleAuthRequired);
-    return () => window.removeEventListener('ecoruta-auth-required', handleAuthRequired);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('ecoruta-auth-required', handleAuthRequired);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const token = localStorage.getItem('ecoruta_token');
+    const expiresAt = token ? getTokenExpiration(token) : null;
+    if (!expiresAt || expiresAt <= Date.now()) {
+      endAuthSession();
+      return undefined;
+    }
+
+    let timeoutId;
+    const closeExpiredSession = () => {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        endAuthSession();
+        return;
+      }
+      timeoutId = window.setTimeout(closeExpiredSession, Math.min(remaining, 2_147_483_647));
+    };
+
+    closeExpiredSession();
+    return () => window.clearTimeout(timeoutId);
+  }, [user]);
 
   if (window.location.pathname === '/recuperar-contrasena') {
     return <Recupercion_contrasena />;
@@ -42,7 +93,7 @@ export default function App() {
           <span aria-hidden="true">&#128100;</span>
         </button>
       </header>
-      <DashboardPage user={user} onLogout={() => { localStorage.removeItem('ecoruta_user'); localStorage.removeItem('ecoruta_token'); setUser(null); }} onUserUpdate={(updatedUser) => { localStorage.setItem('ecoruta_user', JSON.stringify(updatedUser)); setUser(updatedUser); }} />
+      <DashboardPage user={user} onLogout={() => { clearAuthSession(); setUser(null); }} onUserUpdate={(updatedUser) => { localStorage.setItem('ecoruta_user', JSON.stringify(updatedUser)); setUser(updatedUser); }} />
       <footer id="nosotros">EcoRuta</footer>
       {showAuth && <AuthPanel onClose={() => setShowAuth(false)} onAuthenticated={setUser} />}
       {accountOpen && <div className="auth-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setAccountOpen(false)}><div className="account-modal"><button className="auth-close" type="button" onClick={() => setAccountOpen(false)}>x</button><AccountPanel user={user} onUpdated={(updatedUser) => { localStorage.setItem('ecoruta_user', JSON.stringify(updatedUser)); setUser(updatedUser); }} /></div></div>}

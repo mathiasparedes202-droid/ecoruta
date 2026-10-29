@@ -1,8 +1,9 @@
 import { API_BASE } from './env';
+import { authenticatedFetch } from './authSession';
 
 async function request(path) {
   const token = localStorage.getItem('ecoruta_token');
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await authenticatedFetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
   const result = await response.json();
