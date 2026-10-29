@@ -388,11 +388,13 @@ class CompraController extends Controller
             }
             $html .= '</tbody></table>';
 
-            $iva = isset($compra['total_iva']) ? (float)$compra['total_iva'] : round($subtotal * 0.1, 2);
-            $total = isset($compra['total_compra']) ? (float)$compra['total_compra'] : round($subtotal + $iva, 2);
+            // Precios CON IVA incluido: sin total guardado, el IVA se extrée
+            // dividiendo el bruto entre 11 (10%) y el total es el propio bruto.
+            $iva = isset($compra['total_iva']) ? (float)$compra['total_iva'] : round($subtotal / 11, 2);
+            $total = isset($compra['total_compra']) ? (float)$compra['total_compra'] : round($subtotal, 2);
 
             $html .= '<div class="totales"><div>Subtotal: ₲ ' . number_format($subtotal, 2, ',', '.') . '</div>';
-            $html .= '<div>IVA: ₲ ' . number_format($iva, 2, ',', '.') . '</div>';
+            $html .= '<div>IVA (ya incluido en el subtotal): ₲ ' . number_format($iva, 2, ',', '.') . '</div>';
             $html .= '<div style="font-weight:700;margin-top:8px">Total: ₲ ' . number_format($total, 2, ',', '.') . '</div></div>';
 
             $html .= '<script>window.onload = function(){ window.print(); };</script>';

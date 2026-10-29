@@ -75,17 +75,26 @@ const obtenerValoresPorIva = (detalle) => {
     detalle.iva_tipo
   );
 
+  // El precio YA trae el IVA adentro: la columna gravada de la factura es
+  // el bruto menos su IVA (extracción con / 11 para 10% y / 21 para 5%),
+  // para que gravado + IVA = total de la factura.
+  const iva = tipoIva === 10
+    ? subtotal / 11
+    : tipoIva === 5
+      ? subtotal / 21
+      : 0;
+
   return {
     exenta: tipoIva === 0
       ? subtotal
       : 0,
 
     iva5: tipoIva === 5
-      ? subtotal
+      ? subtotal - iva
       : 0,
 
     iva10: tipoIva === 10
-      ? subtotal
+      ? subtotal - iva
       : 0
   };
 };

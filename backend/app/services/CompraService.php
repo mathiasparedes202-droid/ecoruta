@@ -96,12 +96,16 @@ class CompraService
             $subtotal = $cantidad * $precioUnitario;
             $detalle['subtotal'] = $subtotal;
 
+            // Precios CON IVA incluido: IVA extruido (bruto / 21 ó / 11) y
+            // gravada = bruto − IVA, igual que en ventas y facturas.
             if ($ivaTipo == 5) {
-                $subtotalIva5 += $subtotal;
-                $iva5 += $subtotal * 0.05;
+                $ivaLinea = $subtotal / 21;
+                $subtotalIva5 += $subtotal - $ivaLinea;
+                $iva5 += $ivaLinea;
             } elseif ($ivaTipo == 10) {
-                $subtotalIva10 += $subtotal;
-                $iva10 += $subtotal * 0.10;
+                $ivaLinea = $subtotal / 11;
+                $subtotalIva10 += $subtotal - $ivaLinea;
+                $iva10 += $ivaLinea;
             } else {
                 $subtotalIvaExenta += $subtotal;
             }
@@ -109,9 +113,11 @@ class CompraService
             $totalCompra += $subtotal;
         }
 
-        // Calcular totales
+        // Calcular totales: los precios ya traen el IVA adentro, así que el
+        // total de la compra es simplemente la suma de los renglones
+        // (gravada + IVA = total; no se suma el IVA encima).
         $totalIva = $iva5 + $iva10;
-        $data['total_compra'] = $totalCompra + $totalIva;
+        $data['total_compra'] = $totalCompra;
         $data['iva_5'] = $iva5;
         $data['iva_10'] = $iva10;
         $data['subtotal_iva_exenta'] = $subtotalIvaExenta;
@@ -205,11 +211,19 @@ class CompraService
             $descuento = isset($detalle['descuento']) ? $detalle['descuento'] : 0;
             $lineTotal = ($cantidad * $precioUnitario) - $descuento;
             $subtotal += $lineTotal;
-            $totalIva += $lineTotal * 0.1;
+
+            // Precio con IVA incluido: extraer el IVA (bruto / 11 ó / 21).
+            $ivaTipo = (int) ($detalle['iva_tipo'] ?? 10);
+            if ($ivaTipo === 5) {
+                $totalIva += $lineTotal / 21;
+            } elseif ($ivaTipo === 10) {
+                $totalIva += $lineTotal / 11;
+            }
         }
 
         return [
-            'total_compra' => $subtotal + $totalIva,
+            // El bruto ya incluye el IVA: total = suma de renglones.
+            'total_compra' => $subtotal,
             'total_iva' => $totalIva,
         ];
     }

@@ -185,12 +185,17 @@ class VentaService
             $subtotal = $cantidad * $precioUnitario;
             $detalle['subtotal'] = $subtotal;
 
+            // Precios CON IVA incluido: el IVA se extrée (bruto / 21 para 5%,
+            // bruto / 11 para 10%) y la gravada es el bruto menos ese IVA,
+            // así gravada + IVA = total de la venta (no se suma encima).
             if ($ivaTipo == 5) {
-                $subtotalIva5 += $subtotal;
-                $iva5 += $subtotal * 0.05;
+                $ivaLinea = $subtotal / 21;
+                $subtotalIva5 += $subtotal - $ivaLinea;
+                $iva5 += $ivaLinea;
             } elseif ($ivaTipo == 10) {
-                $subtotalIva10 += $subtotal;
-                $iva10 += $subtotal * 0.10;
+                $ivaLinea = $subtotal / 11;
+                $subtotalIva10 += $subtotal - $ivaLinea;
+                $iva10 += $ivaLinea;
             } else {
                 $subtotalIvaExenta += $subtotal;
             }

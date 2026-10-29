@@ -158,11 +158,27 @@ function facturaPublicUrl(int $idFactura): string
     return appBaseUrl() . '/api/facturas/' . $idFactura . '/kude';
 }
 
-function calcularIvaIncluido(float $total): array
+/**
+ * IVA de un precio que YA trae el IVA adentro (régimen de Paraguay).
+ *
+ * El IVA se EXTRÉE dividiendo el bruto entre 11 (tasa 10%) o entre 21
+ * (tasa 5%) — nunca se suma encima del precio. La gravada es el bruto
+ * menos ese IVA, de modo que gravada + IVA = total cobrado.
+ *
+ * Ej: 10.000 con IVA 10% → IVA 909,09 y gravada 9.090,91 (9.090,91 + 909,09 = 10.000).
+ * Ej: 1.050 con IVA 5%  → IVA 50,00 y gravada 1.000,00.
+ */
+function calcularIvaIncluido(float $total, int $tasa = 10): array
 {
-    // Precios con IVA incluido, servicio 10%: iva = total * 10 / 110.
-    $iva10 = round($total * 10 / 110, 2);
-    return ['gravada_10' => round($total - $iva10, 2), 'iva_10' => $iva10];
+    $iva10 = $tasa === 10 ? round($total / 11, 2) : 0.0;
+    $iva5 = $tasa === 5 ? round($total / 21, 2) : 0.0;
+
+    return [
+        'gravada_10' => $tasa === 10 ? round($total - $iva10, 2) : 0.0,
+        'iva_10' => $iva10,
+        'gravada_5' => $tasa === 5 ? round($total - $iva5, 2) : 0.0,
+        'iva_5' => $iva5,
+    ];
 }
 
 /**
