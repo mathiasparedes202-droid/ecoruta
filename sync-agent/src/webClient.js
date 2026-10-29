@@ -23,7 +23,8 @@ export async function checkHealth(base) {
 }
 
 // Proxy genérico: reenvía al backend destino conservando método, query y body.
-export async function forward(base, req, extraHeaders = {}) {
+// timeoutMs: Render (free) se duerme y su cold start puede superar los 30s.
+export async function forward(base, req, extraHeaders = {}, timeoutMs = 30000) {
   const url = base + req.originalUrl.replace(/^\/api/, '/api');
   const headers = { ...extraHeaders };
   const ct = req.get('content-type');
@@ -39,7 +40,7 @@ export async function forward(base, req, extraHeaders = {}) {
       headers,
       body: hasBody ? JSON.stringify(req.body ?? {}) : undefined,
     },
-    30000
+    timeoutMs
   );
   const text = await r.text();
   let json = null;

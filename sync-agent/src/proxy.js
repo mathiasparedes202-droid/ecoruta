@@ -155,7 +155,24 @@ proxy.use('/api', async (req, res) => {
     res.set('content-type', r.contentType || 'text/plain');
     return res.send(r.text);
   } catch (e) {
-    // Si la web falló a mitad de camino, degradar a local en lecturas y snapshot-writes.
+    // Render (free) se duerme: el cold start puede superar el timeout de 30s y
+    // eso hacía degradar a local sin motivo. Local es solo réplica offline y NO
+    // tiene datos como las facturas (viven solo en la web), por lo que degradar
+    // devolvía "Factura no encontrada". Antes de rendirse, reintenta una vez
+    // contra la web con bastante más espera.
+    if (online) {
+      log(`[proxy] web falló (${e.message}); reintento con espera ampliada antes de degradar`);
+      try {
+        const rr = await forward(config.webBase, req, { 'x-sync-key': config.webSyncKey }, 45000);
+        res.status(rr.status);
+        if (rr.json) return res.json(rr.json);
+        res.set('content-type', rr.contentType || 'text/html');
+        return res.send(rr.text);
+      } catch (eRetry) {
+        log(`[proxy] reintento web también falló (${eRetry.message}), degradando a local`);
+      }
+    }
+
     log(`[proxy] error contactando destino (${e.message}), degradando a local`);
     try {
       const r = await forward(config.localBase, req, { 'x-sync-key': config.localSyncKey });
