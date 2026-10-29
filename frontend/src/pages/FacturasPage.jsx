@@ -17,8 +17,20 @@ export default function FacturasPage({ user }) {
   const [detail, setDetail] = useState(null);
   const [emitPedido, setEmitPedido] = useState('');
   const [msg, setMsg] = useState('');
+  const [enviando, setEnviando] = useState(false);
 
   async function load(f = filtros) {
+    // Validación de filtros: el rango de fechas debe ser coherente.
+    if (f.desde && f.hasta && f.desde > f.hasta) {
+      setError('La fecha "Desde" no puede ser posterior a "Hasta".');
+      setLoading(false);
+      return;
+    }
+    if (f.numero && !/^[0-9\-]{0,20}$/.test(f.numero)) {
+      setError('El número de comprobante solo puede contener dígitos y guiones.');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -45,29 +57,42 @@ export default function FacturasPage({ user }) {
   async function anular(id) {
     const motivo = window.prompt('Motivo de anulación (mínimo 5 caracteres):', '');
     if (motivo === null) return;
+    if (motivo.trim().length < 5) {
+      setMsg('Indicá el motivo de anulación (mínimo 5 caracteres).');
+      return;
+    }
+    if (enviando) return;
+    setEnviando(true);
     try {
-      const r = await anularFactura(id, motivo);
+      const r = await anularFactura(id, motivo.trim());
       setMsg(r.message);
       setDetail(null);
       await load();
     } catch (e) {
       setMsg(e.message);
+    } finally {
+      setEnviando(false);
     }
   }
 
   async function emitir() {
-    const id = Number(emitPedido);
-    if (!id) {
-      setMsg('Indicá el ID del pedido entregado a facturar.');
+    const raw = String(emitPedido || '').trim();
+    // Solo IDs de pedido enteros positivos (evita "abc", "1.5", vacíos).
+    if (!/^\d+$/.test(raw) || Number(raw) <= 0) {
+      setMsg('Indicá el ID del pedido entregado a facturar (solo números enteros positivos).');
       return;
     }
+    if (enviando) return;
+    setEnviando(true);
     try {
-      const r = await emitirFacturaPedido(id, {});
-      setMsg(`${r.message} Total ₲ ${formatGs(r.total)} · IVA ₲ ${formatGs(r.iva_10)}`);
+      const r = await emitirFacturaPedido(Number(raw), {});
+      setMsg(`${r.message} Total ₲ ${formatGs(r.total ?? 0)} · IVA ₲ ${formatGs(r.iva_10 ?? 0)}`);
       setEmitPedido('');
       await load();
     } catch (e) {
       setMsg(e.message);
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -103,8 +128,17 @@ export default function FacturasPage({ user }) {
       {!isMerchant && (
         <div className="facturas-emitir">
           <strong>Emitir manual:</strong>
-          <input value={emitPedido} onChange={(e) => setEmitPedido(e.target.value)} placeholder="ID pedido entregado" />
-          <button type="button" className="primary-action" onClick={emitir}>Emitir factura</button>
+          <input
+            value={emitPedido}
+            onChange={(e) => setEmitPedido(e.target.value.replace(/[^\d]/g, ''))}
+            placeholder="ID pedido entregado"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label="ID del pedido a facturar"
+          />
+          <button type="button" className="primary-action" onClick={emitir} disabled={enviando}>
+            {enviando ? 'Emitiendo…' : 'Emitir factura'}
+          </button>
           <small>Al entregarse, el pedido se factura solo. Esto es para pendientes anteriores.</small>
         </div>
       )}
@@ -138,7 +172,7 @@ export default function FacturasPage({ user }) {
                   <button type="button" onClick={() => verDetalle(f.id_factura)}>Ver</button>
                   <button type="button" onClick={() => openKude(f.id_factura)}>KuDE</button>
                   <button type="button" onClick={() => openFacturaPdf(f.id_factura)}>PDF</button>
-                  {f.estado === 'Vigente' && <button type="button" onClick={() => anular(f.id_factura)}>Anular</button>}
+                  {f.estado === 'Vigente' && <button type="button" onClick={() => anular(f.id_factura)} disabled={enviando}>Anular</button>}
                 </td>
               </tr>
             ))}
@@ -170,7 +204,7 @@ export default function FacturasPage({ user }) {
               <button type="button" className="primary-action" onClick={() => openKude(detail.id_factura)}>Abrir KuDE / Imprimir</button>
               <button type="button" onClick={() => openFacturaHtml(detail.id_factura)}>Ver HTML</button>
               <button type="button" onClick={() => openFacturaPdf(detail.id_factura)}>Descargar PDF</button>
-              {detail.estado === 'Vigente' && <button type="button" onClick={() => anular(detail.id_factura)}>Anular</button>}
+              {detail.estado === 'Vigente' && <button type="button" onClick={() => anular(detail.id_factura)} disabled={enviando}>Anular</button>}
             </div>
             <h3>Auditoría</h3>
             <ul>

@@ -202,6 +202,21 @@ const generarFacturaHtml = (factura) => {
   const esCredito =
     datosFactura.condicionVenta === "Crédito";
 
+  // Cuadre de montos: SUBTOTAL (gravado) + IVA - descuento = TOTAL A PAGAR.
+  const subtotalGravado =
+    (resumen.subtotalExenta || 0) +
+    (resumen.subtotalIva5 || 0) +
+    (resumen.subtotalIva10 || 0);
+
+  const descuentoVenta = resumen.descuento || 0;
+
+  const totalLiquidacionIva =
+    resumen.totalLiquidacion ||
+    (resumen.iva5 || 0) + (resumen.iva10 || 0);
+
+  const totalAPagar =
+    subtotalGravado - descuentoVenta + totalLiquidacionIva;
+
   const filasDetalles = generarFilasDetalles(
     detalles
   );
@@ -888,7 +903,7 @@ const generarFacturaHtml = (factura) => {
             <div class="total-monto">
               Gs.
               ${formatearMoneda(
-                resumen.totalFactura
+                subtotalGravado
               )}
             </div>
 
@@ -903,7 +918,7 @@ const generarFacturaHtml = (factura) => {
             <div class="total-monto">
               Gs.
               ${formatearMoneda(
-                resumen.descuento || 0
+                descuentoVenta
               )}
             </div>
 
@@ -933,7 +948,7 @@ const generarFacturaHtml = (factura) => {
             <div class="total-monto">
               Gs.
               ${formatearMoneda(
-                resumen.totalFactura
+                totalAPagar
               )}
             </div>
 
@@ -941,7 +956,7 @@ const generarFacturaHtml = (factura) => {
 
           <div class="monto-letras">
             SON: ${escaparHtml(
-              montoEnLetras(resumen.totalFactura)
+              montoEnLetras(totalAPagar)
             )}
             ${datosFactura.metodoPago ? ` · MÉTODO DE PAGO: ${escaparHtml(datosFactura.metodoPago).toUpperCase()}` : ""}
           </div>
@@ -1003,10 +1018,17 @@ const generarFacturaHtml = (factura) => {
           </footer>
 
           <div class="verificacion">
+            ${
+              factura.qrTexto
+                ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
+                  factura.qrTexto
+                )}" alt="QR de la factura" width="140" height="140" style="display:block;margin:0 auto 8px">`
+                : ""
+            }
             <strong>Sello digital (control interno):</strong>
             ${escaparHtml(factura.cdc || "—")}
             <br>
-            <strong>Código de verificación:</strong>
+            <strong>Verifique su factura (escanee el QR o abra el enlace):</strong>
             ${escaparHtml(factura.qrTexto || "—")}
             <br>
             <strong>Timbrado vigente hasta:</strong>

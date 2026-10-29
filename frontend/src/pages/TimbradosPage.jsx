@@ -11,6 +11,7 @@ export default function TimbradosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [form, setForm] = useState({
     ruc: '', razon_social: '', direccion: '', num_timbrado: '',
     establecimiento: '001', punto_expedicion: '001',
@@ -36,13 +37,47 @@ export default function TimbradosPage() {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Valida todos los campos del timbrado antes de enviar.
+  function validarForm() {
+    const errs = [];
+    const digits = (s) => String(s || '').replace(/\D/g, '');
+    if (!/^\d{5,15}$/.test(digits(form.ruc))) errs.push('RUC: solo dígitos (5 a 15, ej: 80012345-6).');
+    if (String(form.razon_social || '').trim().length < 3) errs.push('Razón social: mín. 3 caracteres.');
+    if (!/^\d{4,15}$/.test(digits(form.num_timbrado))) errs.push('N° de timbrado: solo dígitos (4 a 15).');
+    if (!/^\d{1,3}$/.test(digits(form.establecimiento))) errs.push('Establecimiento: 1 a 3 dígitos (ej: 001).');
+    if (!/^\d{1,3}$/.test(digits(form.punto_expedicion))) errs.push('Punto de expedición: 1 a 3 dígitos (ej: 001).');
+    if (!form.fecha_inicio) errs.push('Fecha de inicio obligatoria.');
+    if (!form.fecha_fin) errs.push('Fecha de fin obligatoria.');
+    if (form.fecha_inicio && form.fecha_fin && form.fecha_fin < form.fecha_inicio) {
+      errs.push('La vigencia termina antes de empezar.');
+    }
+    const nroIni = Number(form.nro_inicio);
+    const nroFin = Number(form.nro_fin);
+    if (!Number.isInteger(nroIni) || nroIni < 1) errs.push('N° inicial: entero mayor a 0.');
+    if (!Number.isInteger(nroFin) || nroFin < 1) errs.push('N° final: entero mayor a 0.');
+    if (Number.isInteger(nroIni) && Number.isInteger(nroFin) && nroFin <= nroIni) {
+      errs.push('El N° final debe ser mayor que el inicial.');
+    }
+    return errs;
+  }
+
   async function guardar() {
+    const errs = validarForm();
+    if (errs.length) {
+      setMsg(errs.join(' '));
+      return;
+    }
+    if (enviando) return;
+    setEnviando(true);
     try {
       const r = await createTimbrado({ ...form, nro_inicio: Number(form.nro_inicio), nro_fin: Number(form.nro_fin), activo: Number(form.activo) ? 1 : 0 });
       setMsg(`Timbrado registrado (id ${r.id_timbrado}).`);
+      setForm((f) => ({ ...f, num_timbrado: '', fecha_inicio: '', fecha_fin: '', nro_inicio: 1, nro_fin: 100000 }));
       await load();
     } catch (e) {
       setMsg(e.message);
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -74,15 +109,18 @@ export default function TimbradosPage() {
 
       <h2>Nuevo timbrado</h2>
       <div className="facturas-filtros">
-        <label>RUC<input value={form.ruc} onChange={(e) => set('ruc', e.target.value)} placeholder="80000000-1" /></label>
+        <label>RUC<input value={form.ruc} onChange={(e) => set('ruc', e.target.value.replace(/[^\d-]/g, ''))} placeholder="80000000-1" /></label>
         <label>Razón social<input value={form.razon_social} onChange={(e) => set('razon_social', e.target.value)} placeholder="EcoRuta S.A." /></label>
-        <label>N° timbrado<input value={form.num_timbrado} onChange={(e) => set('num_timbrado', e.target.value)} /></label>
-        <label>Est.<input value={form.establecimiento} onChange={(e) => set('establecimiento', e.target.value)} size={4} /></label>
-        <label>Pto.<input value={form.punto_expedicion} onChange={(e) => set('punto_expedicion', e.target.value)} size={4} /></label>
+        <label>N° timbrado<input value={form.num_timbrado} onChange={(e) => set('num_timbrado', e.target.value.replace(/\D/g, ''))} placeholder="12345678" /></label>
+        <label>Est.<input value={form.establecimiento} onChange={(e) => set('establecimiento', e.target.value.replace(/\D/g, ''))} size={4} maxLength={3} /></label>
+        <label>Pto.<input value={form.punto_expedicion} onChange={(e) => set('punto_expedicion', e.target.value.replace(/\D/g, ''))} size={4} maxLength={3} /></label>
         <label>Desde<input type="date" value={form.fecha_inicio} onChange={(e) => set('fecha_inicio', e.target.value)} /></label>
         <label>Hasta<input type="date" value={form.fecha_fin} onChange={(e) => set('fecha_fin', e.target.value)} /></label>
-        <label>Hasta N°<input type="number" value={form.nro_fin} onChange={(e) => set('nro_fin', e.target.value)} /></label>
-        <button type="button" className="primary-action" onClick={guardar}>Registrar</button>
+        <label>Desde N°<input type="number" min={1} value={form.nro_inicio} onChange={(e) => set('nro_inicio', e.target.value)} /></label>
+        <label>Hasta N°<input type="number" min={1} value={form.nro_fin} onChange={(e) => set('nro_fin', e.target.value)} /></label>
+        <button type="button" className="primary-action" onClick={guardar} disabled={enviando}>
+          {enviando ? 'Registrando…' : 'Registrar'}
+        </button>
       </div>
 
       <h2>Historial</h2>

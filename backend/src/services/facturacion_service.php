@@ -59,6 +59,22 @@ function crearTimbrado(array $body): array
     if (strtotime((string) $body['fecha_fin']) < strtotime((string) $body['fecha_inicio'])) {
         sendJson(['message' => 'La vigencia termina antes de empezar'], 422);
     }
+    // Validaciones de formato (el formulario las replica, pero el server no confía en el cliente).
+    $digits = fn($v) => preg_replace('/\D/', '', (string) $v);
+    if (!preg_match('/^\d{5,15}$/', $digits($body['ruc']))) {
+        sendJson(['message' => 'RUC inválido: solo dígitos (5 a 15)'], 422);
+    }
+    if (mb_strlen(trim((string) $body['razon_social'])) < 3) {
+        sendJson(['message' => 'Razón social inválida: mín. 3 caracteres'], 422);
+    }
+    if (!preg_match('/^\d{4,15}$/', $digits($body['num_timbrado']))) {
+        sendJson(['message' => 'N° de timbrado inválido: solo dígitos (4 a 15)'], 422);
+    }
+    $nroIni = max(1, (int) ($body['nro_inicio'] ?? 1));
+    $nroFin = (int) $body['nro_fin'];
+    if ($nroFin < 1 || $nroFin <= $nroIni) {
+        sendJson(['message' => 'El N° final debe ser mayor que el inicial'], 422);
+    }
     $pdo = database();
     $st = $pdo->prepare(
         'INSERT INTO timbrados (ruc, razon_social, direccion, num_timbrado, establecimiento, punto_expedicion,
@@ -115,6 +131,33 @@ function actualizarTimbrado(int $id, array $body): array
 
 // ---------- Emisión ----------
 
+/**
+ * URL base del backend para links públicos (QR de facturas).
+ * Prioriza APP_URL (producción); en local deriva del request actual
+ * (XAMPP: http://localhost/ecoruta/backend).
+ */
+function appBaseUrl(): string
+{
+    $env = getenv('APP_URL');
+    if (is_string($env) && trim($env) !== '') {
+        return rtrim(trim($env), '/');
+    }
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+    $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $base = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/'))), '/');
+    return ($https ? 'https' : 'http') . '://' . $host . $base;
+}
+
+/**
+ * URL pública de la vista KuDE de una factura. Es la que codifica el QR:
+ * escanearlo abre el comprobante de vuelta en el navegador.
+ */
+function facturaPublicUrl(int $idFactura): string
+{
+    return appBaseUrl() . '/api/facturas/' . $idFactura . '/kude';
+}
+
 function calcularIvaIncluido(float $total): array
 {
     // Precios con IVA incluido, servicio 10%: iva = total * 10 / 110.
@@ -142,12 +185,19 @@ function emitirFacturaPorPedido(int $idPedido, string $origen = 'manual', int $u
     $pdo = database();
     $pdo->beginTransaction();
     try {
-        $ex = $pdo->prepare('SELECT id_factura, numero_completo, estado FROM facturas WHERE id_pedido = :id LIMIT 1');
+        $ex = $pdo->prepare('SELECT id_factura, numero_completo, estado, total, iva_10 FROM facturas WHERE id_pedido = :id LIMIT 1');
         $ex->execute(['id' => $idPedido]);
         $previa = $ex->fetch(PDO::FETCH_ASSOC);
         if ($previa) {
             $pdo->rollBack();
-            return ['id_factura' => (int) $previa['id_factura'], 'numero' => $previa['numero_completo'], 'repetida' => true, 'message' => 'El pedido ya tenía factura (no se duplicó)'];
+            return [
+                'id_factura' => (int) $previa['id_factura'],
+                'numero' => $previa['numero_completo'],
+                'repetida' => true,
+                'total' => (float) $previa['total'],
+                'iva_10' => (float) $previa['iva_10'],
+                'message' => 'El pedido ya tenía factura (no se duplicó)',
+            ];
         }
 
         $ped = $pdo->prepare('SELECT * FROM pedidos WHERE id_pedido = :id LIMIT 1');
@@ -239,11 +289,17 @@ function emitirFacturaPorPedido(int $idPedido, string $origen = 'manual', int $u
         ]);
         $idFactura = (int) $pdo->lastInsertId();
 
+        // El QR codifica la URL pública de la factura: escanearlo la reabre.
+        $pdo->prepare('UPDATE facturas SET qr_texto = :qr WHERE id_factura = :id')
+            ->execute(['qr' => facturaPublicUrl($idFactura), 'id' => $idFactura]);
+
+        // El ítem se guarda con el monto GRAVADO (neto): gravada + IVA = total,
+        // así el desglose de la factura siempre cuadra con el cobro del pedido.
         $detalle = 'Servicio de reparto ecológico EcoRuta — pedido #' . $idPedido . ' (' . trim((string) ($p['detalle_paquete'] ?? '')) . ')';
         $pdo->prepare(
             'INSERT INTO factura_items (id_factura, concepto, cantidad, precio_unitario, subtotal, iva_tipo)
              VALUES (:fac, :con, 1, :pre, :sub, 10)'
-        )->execute(['fac' => $idFactura, 'con' => mb_substr($detalle, 0, 200), 'pre' => $total, 'sub' => $total]);
+        )->execute(['fac' => $idFactura, 'con' => mb_substr($detalle, 0, 200), 'pre' => $iva['gravada_10'], 'sub' => $iva['gravada_10']]);
 
         $pdo->prepare(
             "INSERT INTO factura_auditoria (id_factura, accion, id_usuario, detalle) VALUES (:fac, 'emitida', :usr, :det)"
@@ -297,6 +353,15 @@ function historialFacturas(array $f): array
     $pdo = database();
     $where = [];
     $params = [];
+    // Valida formato de fechas (AAAA-MM-DD) y coherencia del rango.
+    foreach (['desde', 'hasta'] as $k) {
+        if (!empty($f[$k]) && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $f[$k])) {
+            sendJson(['message' => "Filtro \"$k\" inválido: usá formato AAAA-MM-DD"], 422);
+        }
+    }
+    if (!empty($f['desde']) && !empty($f['hasta']) && $f['desde'] > $f['hasta']) {
+        sendJson(['message' => 'La fecha "desde" no puede ser posterior a "hasta"'], 422);
+    }
     if (!empty($f['desde'])) {
         $where[] = 'f.fecha_emision >= :desde';
         $params['desde'] = $f['desde'] . ' 00:00:00';

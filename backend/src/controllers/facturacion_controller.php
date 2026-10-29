@@ -39,12 +39,28 @@ function timbradoVigenteController(): never
 
 function emitirFacturaController(object $claims, int $orderId): never
 {
+    if ($orderId <= 0) {
+        sendJson(['message' => 'ID de pedido inválido'], 422);
+    }
     $body = requestBody();
+    // Validación de los campos del receptor (si vienen, deben ser coherentes).
+    $ruc = trim((string) ($body['ruc_receptor'] ?? ''));
+    if ($ruc !== '' && !preg_match('/^\d{4,15}(-\d{1,2})?$/', $ruc)) {
+        sendJson(['message' => 'RUC del receptor inválido (ej: 80012345-6)'], 422);
+    }
+    $rs = trim((string) ($body['razon_social_receptor'] ?? ''));
+    if ($rs !== '' && mb_strlen($rs) < 3) {
+        sendJson(['message' => 'Razón social del receptor: mín. 3 caracteres'], 422);
+    }
+    $cond = (string) ($body['condicion_venta'] ?? 'Contado');
+    if (!in_array($cond, ['Contado', 'Crédito'], true)) {
+        sendJson(['message' => 'Condición de venta inválida (solo Contado o Crédito)'], 422);
+    }
     $receptor = [
-        'ruc' => $body['ruc_receptor'] ?? '',
-        'razon_social' => $body['razon_social_receptor'] ?? '',
-        'direccion' => $body['direccion_receptor'] ?? '',
-        'condicion_venta' => $body['condicion_venta'] ?? 'Contado',
+        'ruc' => $ruc,
+        'razon_social' => $rs,
+        'direccion' => trim((string) ($body['direccion_receptor'] ?? '')),
+        'condicion_venta' => $cond,
     ];
     sendJson(emitirFacturaPorPedido($orderId, 'manual', (int) ($claims->sub ?? 0), $receptor), 201);
 }
@@ -74,20 +90,32 @@ function kudeFacturaController(int $id): never
     if (!$fac) {
         sendJson(['message' => 'Factura no encontrada'], 404);
     }
-    $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' . urlencode((string) $fac['qr_texto']);
+    // QR en vivo: siempre apunta al link que reabre esta factura (no depende
+    // del texto guardado, que en facturas antiguas era solo un código seco).
+    $qrLink = facturaPublicUrl($id);
+    $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' . urlencode($qrLink);
+    // Normaliza ítems antiguos (guardaban el total con IVA en el ítem).
+    $suma10 = 0.0;
+    foreach (($fac['items'] ?? []) as $it) {
+        if ((int) ($it['iva_tipo'] ?? 10) === 10) {
+            $suma10 += (float) ($it['subtotal'] ?? 0);
+        }
+    }
+    $gravada10 = (float) ($fac['gravada_10'] ?? 0);
+    $factor = ($suma10 > 0 && $gravada10 > 0 && abs($suma10 - $gravada10) > 0.01) ? ($gravada10 / $suma10) : 1.0;
     $rows = '';
     foreach (($fac['items'] ?? []) as $it) {
         $rows .= '<tr><td>' . htmlspecialchars((string) $it['concepto']) . '</td><td style="text-align:right">'
             . htmlspecialchars((string) $it['cantidad']) . '</td><td style="text-align:right">₲ '
-            . number_format((float) $it['precio_unitario'], 0, ',', '.') . '</td><td style="text-align:right">₲ '
-            . number_format((float) $it['subtotal'], 0, ',', '.') . '</td></tr>';
+            . number_format((float) $it['precio_unitario'] * $factor, 0, ',', '.') . '</td><td style="text-align:right">₲ '
+            . number_format((float) $it['subtotal'] * $factor, 0, ',', '.') . '</td></tr>';
     }
     $f = fn($v) => '₲ ' . number_format((float) $v, 0, ',', '.');
     header('Content-Type: text/html; charset=UTF-8');
     echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>KuDE ' . htmlspecialchars((string) $fac['numero_completo'])
         . '</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:24px auto;color:#111}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:6px;font-size:13px}.head{display:flex;justify-content:space-between;gap:16px}.badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:bold;background:' . ($fac['estado'] === 'Vigente' ? '#dcfce7' : '#fee2e2') . '}.muted{color:#555;font-size:12px}@media print{.noprint{display:none}}</style></head><body>'
         . '<div class="head"><div><h2>EcoRuta S.A. — KuDE</h2><p class="muted">Documento pre-fiscal generado por el sistema (fase SIFEN en homologación).</p></div>'
-        . '<div style="text-align:center"><img src="' . $qrUrl . '" alt="QR" width="180" height="180"><br><small>' . htmlspecialchars((string) $fac['qr_texto']) . '</small></div></div>'
+        . '<div style="text-align:center"><img src="' . $qrUrl . '" alt="QR" width="180" height="180"><br><small>' . htmlspecialchars($qrLink) . '</small></div></div>'
         . '<p><strong>Factura:</strong> ' . htmlspecialchars((string) $fac['numero_completo'])
         . ' <span class="badge">' . htmlspecialchars((string) $fac['estado']) . '</span><br>'
         . '<strong>Timbrado:</strong> ' . htmlspecialchars((string) $fac['ruc_emisor']) . ' · '
@@ -141,8 +169,18 @@ function buildDeliveryFacturaModel(int $idFactura): array
     $metodoPago = $ped->fetchColumn() ?: 'efectivo';
 
     $total = (float) $fac['total'];
-    $detalles = array_map(function ($it) {
-        $sub = (float) ($it['subtotal'] ?? 0);
+    // Normaliza items: los emitidos antes del fix guardaban el TOTAL (con IVA)
+    // en el ítem; se re-escalan a la gravada real para que las columnas cuadren.
+    $suma10 = 0.0;
+    foreach (($fac['items'] ?? []) as $it) {
+        if ((int) ($it['iva_tipo'] ?? 10) === 10) {
+            $suma10 += (float) ($it['subtotal'] ?? 0);
+        }
+    }
+    $gravada10 = (float) ($fac['gravada_10'] ?? 0);
+    $factor = ($suma10 > 0 && $gravada10 > 0 && abs($suma10 - $gravada10) > 0.01) ? ($gravada10 / $suma10) : 1.0;
+    $detalles = array_map(function ($it) use ($factor) {
+        $sub = (float) ($it['subtotal'] ?? 0) * $factor;
         $iva = (int) ($it['iva_tipo'] ?? 10);
         return [
             'idDetalleVenta' => $it['id_item'] ?? null,
@@ -150,7 +188,7 @@ function buildDeliveryFacturaModel(int $idFactura): array
             'cantidad' => (float) ($it['cantidad'] ?? 1),
             'unidadMedida' => 'Servicio',
             'descripcion' => $it['concepto'] ?? 'Servicio de reparto',
-            'precioUnitario' => (float) ($it['precio_unitario'] ?? 0),
+            'precioUnitario' => (float) ($it['precio_unitario'] ?? 0) * $factor,
             'tipoIva' => $iva,
             'exenta' => $iva === 0 ? $sub : 0,
             'iva5' => $iva === 5 ? $sub : 0,
@@ -209,7 +247,9 @@ function buildDeliveryFacturaModel(int $idFactura): array
         ],
         // Extras propios (la plantilla los ignora; sirven al KuDE/API)
         'cdc' => $fac['cdc'] ?? null,
-        'qrTexto' => $fac['qr_texto'] ?? null,
+        // QR = link público que reabre la factura al escanear (genera en vivo
+        // para que también funcione en facturas emitidas antes del fix).
+        'qrTexto' => facturaPublicUrl((int) $fac['id_factura']),
     ];
 }
 
@@ -313,6 +353,15 @@ function facturaHtmlFallback(array $model): string
         }
     }
     $f = fn($v) => 'Gs. ' . facturaGs($v);
+    // Cuadre de montos: SUBTOTAL (gravado) + IVA - descuento = TOTAL A PAGAR.
+    $subtotalGravado = (float) ($res['subtotalExenta'] ?? 0) + (float) ($res['subtotalIva5'] ?? 0) + (float) ($res['subtotalIva10'] ?? 0);
+    $descuento = (float) ($res['descuento'] ?? 0);
+    $totalIva = (float) ($res['totalLiquidacion'] ?? 0);
+    $totalPagar = round($subtotalGravado - $descuento + $totalIva, 0);
+    $qrTexto = (string) ($model['qrTexto'] ?? '');
+    $qrImg = $qrTexto !== ''
+        ? '<img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' . urlencode($qrTexto) . '" alt="QR factura" width="150" height="150" style="display:block;margin:6px auto">'
+        : '';
     $estado = (string) ($fac['estado'] ?? '');
     $anulada = $estado === 'Anulada' ? '<div style="margin-bottom:8px;padding:5px;border:2px solid #000;text-align:center;font-size:15px;font-weight:700">FACTURA ANULADA</div>' : '';
     return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -353,17 +402,18 @@ function facturaHtmlFallback(array $model): string
         . '<td style="text-align:right">' . facturaGs($res['subtotalIva5'] ?? 0) . '</td>'
         . '<td style="text-align:right">' . facturaGs($res['subtotalIva10'] ?? 0) . '</td></tr>'
         . '</tbody></table>'
-        . '<section class="tot"><div>SUBTOTAL</div><div>' . $f($res['totalFactura'] ?? 0) . '</div></section>'
-        . '<section class="tot"><div>DESCUENTO</div><div>' . $f($res['descuento'] ?? 0) . '</div></section>'
-        . '<section class="tot"><div>IVA 10 %</div><div>' . $f($res['iva10'] ?? 0) . '</div></section>'
-        . '<section class="tot"><div>TOTAL A PAGAR</div><div>' . $f($res['totalFactura'] ?? 0) . '</div></section>'
-        . '<div class="letras">SON: ' . facturaEsc(facturaMontoLetras($res['totalFactura'] ?? 0)) . '</div>'
+        . '<section class="tot"><div>SUBTOTAL</div><div>' . $f($subtotalGravado) . '</div></section>'
+        . '<section class="tot"><div>DESCUENTO</div><div>' . $f($descuento) . '</div></section>'
+        . '<section class="tot"><div>IVA 10 %</div><div>' . $f($totalIva) . '</div></section>'
+        . '<section class="tot"><div>TOTAL A PAGAR</div><div>' . $f($totalPagar) . '</div></section>'
+        . '<div class="letras">SON: ' . facturaEsc(facturaMontoLetras($totalPagar)) . '</div>'
         . '<section class="liq"><div><strong>LIQUIDACIÓN DEL IVA</strong></div>'
         . '<div>IVA 5 %<br>' . facturaGs($res['liquidacionIva5'] ?? 0) . '</div>'
         . '<div>IVA 10 %<br>' . facturaGs($res['liquidacionIva10'] ?? 0) . '</div>'
         . '<div>TOTAL IVA<br>' . facturaGs($res['totalLiquidacion'] ?? 0) . '</div></section>'
-        . '<div class="verif"><strong>Sello digital (control interno):</strong> ' . facturaEsc($model['cdc'] ?? '—') . '<br>'
-        . '<strong>Código de verificación:</strong> ' . facturaEsc($model['qrTexto'] ?? '—') . '<br>'
+        . '<div class="verif">' . $qrImg
+        . '<strong>Sello digital (control interno):</strong> ' . facturaEsc($model['cdc'] ?? '—') . '<br>'
+        . '<strong>Verifique su factura (escanee el QR o abra el enlace):</strong> ' . facturaEsc($model['qrTexto'] ?? '—') . '<br>'
         . '<strong>Timbrado vigente hasta:</strong> ' . facturaEsc($emisor['vigenciaTimbrado'] ?? '—')
         . ' — Esta es una representación impresa del documento tributario electrónico.</div>'
         . '</main></body></html>';
