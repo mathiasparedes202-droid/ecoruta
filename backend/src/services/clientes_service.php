@@ -97,6 +97,85 @@ function createCliente(int $commerceId, array $body): array
     return findCliente((int) database()->lastInsertId());
 }
 
+function importClientes(int $commerceId, array $clientes): int
+{
+    if (count($clientes) > 500) {
+        sendJson(['message' => 'Podés importar hasta 500 clientes por archivo'], 422);
+    }
+
+    $errors = [];
+    foreach ($clientes as $index => $cliente) {
+        $line = is_array($cliente) && isset($cliente['line']) && is_numeric($cliente['line'])
+            ? (int) $cliente['line']
+            : $index + 2;
+        if (!is_array($cliente)) {
+            $errors[] = ['line' => $line, 'errors' => ['fila inválida']];
+            continue;
+        }
+
+        $rowErrors = [];
+        $nombre = trim((string) ($cliente['nombre'] ?? ''));
+        $direccion = trim((string) ($cliente['direccion'] ?? ''));
+        $telefono = trim((string) ($cliente['telefono'] ?? ''));
+        $lat = $cliente['lat'] ?? null;
+        $lng = $cliente['lng'] ?? null;
+
+        if (strlen($nombre) < 2) {
+            $rowErrors[] = 'El nombre debe tener al menos 2 caracteres';
+        }
+        if ($direccion === '') {
+            $rowErrors[] = 'La dirección es obligatoria';
+        }
+        if ($telefono !== '' && !preg_match('/^[+]?[0-9\s-]{7,20}$/', $telefono)) {
+            $rowErrors[] = 'El teléfono no es válido';
+        }
+        if (!is_numeric($lat) || !is_numeric($lng)) {
+            $rowErrors[] = 'La latitud y longitud deben ser números';
+        } elseif (!coordsInParaguay((float) $lat, (float) $lng)) {
+            $rowErrors[] = 'La ubicación debe estar dentro de Paraguay';
+        }
+        if ($rowErrors !== []) {
+            $errors[] = ['line' => $line, 'errors' => $rowErrors];
+        }
+    }
+
+    if ($errors !== []) {
+        sendJson([
+            'message' => 'Hay filas con datos inválidos. No se importó ningún cliente.',
+            'errors' => $errors,
+        ], 422);
+    }
+
+    $pdo = database();
+    $statement = $pdo->prepare(
+        'INSERT INTO clientes (id_comercio, nombre, telefono, direccion, lat, lng, referencia)
+         VALUES (:commerce, :name, :phone, :address, :lat, :lng, :reference)'
+    );
+
+    $pdo->beginTransaction();
+    try {
+        foreach ($clientes as $cliente) {
+            $statement->execute([
+                'commerce' => $commerceId,
+                'name' => trim((string) $cliente['nombre']),
+                'phone' => trim((string) ($cliente['telefono'] ?? '')) ?: null,
+                'address' => trim((string) $cliente['direccion']),
+                'lat' => (float) $cliente['lat'],
+                'lng' => (float) $cliente['lng'],
+                'reference' => trim((string) ($cliente['referencia'] ?? '')) ?: null,
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
+
+    return count($clientes);
+}
+
 function findCliente(int $clienteId): array
 {
     $statement = database()->prepare(

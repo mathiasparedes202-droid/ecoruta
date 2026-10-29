@@ -13,14 +13,19 @@ import {
   AlertCircle,
   Loader2,
   PackageX,
-  X
+  X,
+  Download,
+  FileUp,
+  Search
 } from 'lucide-react';
 import {
   createCliente,
   deleteCliente,
   fetchClientes,
+  importClientes,
   updateCliente
 } from '../services/clientesService.js';
+import { downloadClientesCsvTemplate, parseClientesCsv } from '../lib/clientesCsv.js';
 import { PARAGUAY_BOUNDS, PARAGUAY_CENTER, inParaguay, boundedNominatim } from '../lib/geografia.js';
 import { confirmAction, toastSuccess, toastError } from '../lib/feedback.js';
 
@@ -48,11 +53,23 @@ export default function ClientesPage({ user }) {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const [backendError, setBackendError] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState([]);
+  const [importErrors, setImportErrors] = useState([]);
+  const [importMessage, setImportMessage] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState('');
+  const importFileRef = useRef(null);
 
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const markerRef = useRef(null);
   const pickRef = useRef(null);
+
+  const clientesFiltrados = clientes.filter((cliente) => (
+    [cliente.nombre, cliente.telefono, cliente.direccion]
+      .some((value) => String(value || '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  ));
 
   async function load() {
     setLoading(true);
@@ -219,6 +236,57 @@ export default function ClientesPage({ user }) {
     }
   }
 
+  async function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    setImportRows([]);
+    setImportErrors([]);
+    setImportMessage('');
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setImportMessage('Seleccioná un archivo con formato .csv.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setImportMessage('El archivo no puede superar los 2 MB.');
+      return;
+    }
+
+    try {
+      const rows = parseClientesCsv(await file.text());
+      setImportRows(rows);
+      setImportErrors(rows
+        .filter((row) => row.errors.length > 0)
+        .map((row) => ({ line: row.line, errors: row.errors })));
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : 'No se pudo leer el archivo CSV.');
+    }
+  }
+
+  async function handleImport() {
+    const invalidRows = importRows.filter((row) => row.errors.length > 0);
+    if (invalidRows.length > 0) {
+      setImportErrors(invalidRows.map((row) => ({ line: row.line, errors: row.errors })));
+      return;
+    }
+
+    setImporting(true);
+    setImportMessage('');
+    setImportErrors([]);
+    try {
+      const result = await importClientes(importRows.map(({ errors, ...cliente }) => cliente));
+      setNotice(result.message || `Se importaron ${result.importados} clientes.`);
+      setImportRows([]);
+      setImportOpen(false);
+      await load();
+    } catch (err) {
+      setImportMessage(err instanceof Error ? err.message : 'No se pudieron importar los clientes.');
+      setImportErrors(err.errors || []);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="clientes-page">
       <div className="clientes-header">
@@ -323,8 +391,77 @@ export default function ClientesPage({ user }) {
         {/* Listado */}
         <section className="clientes-list">
           <div className="clientes-list__head">
-            <h2>Clientes registrados <span>({clientes.length})</span></h2>
+            <div className="clientes-list__toolbar">
+              <h2>Clientes registrados <span>({clientes.length})</span></h2>
+              <button
+                type="button"
+                className="clientes-import__toggle"
+                onClick={() => {
+                  setImportOpen((open) => !open);
+                  setImportMessage('');
+                  setImportErrors([]);
+                }}
+              >
+                <FileUp size={15} /> Importar CSV
+              </button>
+            </div>
           </div>
+
+          {importOpen && (
+            <div className="clientes-import">
+              <div className="clientes-import__heading">
+                <div>
+                  <strong>Importá varios clientes</strong>
+                  <p>Completá la plantilla CSV. Cada fila necesita nombre, dirección y coordenadas dentro de Paraguay; podés copiarlas desde el mapa del formulario.</p>
+                </div>
+                <button type="button" className="clientes-import__template" onClick={downloadClientesCsvTemplate}>
+                  <Download size={15} /> Descargar plantilla
+                </button>
+              </div>
+              <label className="clientes-import__file">
+                <span>Archivo CSV (máximo 500 clientes, 2 MB)</span>
+                <input ref={importFileRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} disabled={importing} />
+              </label>
+              {importMessage && <p className="clientes-import__message" role="alert">{importMessage}</p>}
+              {importRows.length > 0 && (
+                <>
+                  <p className="clientes-import__summary">
+                    {importRows.length} clientes detectados · {importErrors.length === 0 ? 'listos para importar' : `${importErrors.length} filas con errores`}
+                  </p>
+                  {importErrors.length > 0 && (
+                    <ul className="clientes-import__errors">
+                      {importErrors.slice(0, 10).map((error) => (
+                        <li key={error.line}>Fila {error.line}: {error.errors.join(', ')}</li>
+                      ))}
+                      {importErrors.length > 10 && <li>Y {importErrors.length - 10} filas más con errores.</li>}
+                    </ul>
+                  )}
+                  <button
+                    type="button"
+                    className="primary-action clientes-import__submit"
+                    onClick={handleImport}
+                    disabled={importing || importErrors.length > 0}
+                  >
+                    {importing ? <Loader2 size={15} className="new-order-spin" /> : <FileUp size={15} />}
+                    {importing ? 'Importando…' : `Importar ${importRows.length} clientes`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {!loading && clientes.length > 0 && (
+            <label className="clientes-search">
+              <Search size={16} aria-hidden="true" />
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por nombre, teléfono o dirección"
+                aria-label="Buscar clientes"
+              />
+            </label>
+          )}
 
           {loading ? (
             <div className="clientes-list__empty"><Loader2 size={22} className="new-order-spin" /> Cargando…</div>
@@ -333,9 +470,14 @@ export default function ClientesPage({ user }) {
               <PackageX size={22} />
               <p>Sin clientes todavía. Registrá el primero con su ubicación exacta en el mapa.</p>
             </div>
+          ) : clientesFiltrados.length === 0 ? (
+            <div className="clientes-list__empty">
+              <Search size={22} />
+              <p>No hay clientes que coincidan con “{search}”.</p>
+            </div>
           ) : (
             <div className="clientes-grid">
-              {clientes.map((cliente) => (
+              {clientesFiltrados.map((cliente) => (
                 <article className="cliente-card" key={cliente.id_cliente}>
                   <div className="cliente-card__head">
                     <div className="cliente-card__avatar"><UserRound size={16} /></div>

@@ -42,6 +42,30 @@ function storeCliente(object $claims): never
     sendJson(['cliente' => createCliente($commerceId, requestBody())], 201);
 }
 
+function importClientesController(object $claims): never
+{
+    $commerceId = requireCommerceOrAdmin($claims);
+    if ($commerceId === 0) {
+        $commerceId = isset($_SERVER['HTTP_X_COMERCIO']) ? (int) $_SERVER['HTTP_X_COMERCIO'] : 0;
+        if ($commerceId <= 0) {
+            sendJson(['message' => 'Indica el comercio del cliente (cabecera X-Comercio)'], 422);
+        }
+    }
+
+    $body = requestBody();
+    if (
+        !isset($body['clientes']) ||
+        !is_array($body['clientes']) ||
+        array_values($body['clientes']) !== $body['clientes'] ||
+        $body['clientes'] === []
+    ) {
+        sendJson(['message' => 'El archivo no contiene clientes para importar'], 422);
+    }
+
+    $count = importClientes($commerceId, $body['clientes']);
+    sendJson(['importados' => $count, 'message' => "Se importaron $count clientes."], 201);
+}
+
 function patchCliente(object $claims, int $clienteId): never
 {
     $commerceId = requireCommerceOrAdmin($claims);

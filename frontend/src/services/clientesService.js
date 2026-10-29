@@ -1,4 +1,5 @@
 import { API_BASE } from './env';
+import { authenticatedFetch } from './authSession.js';
 
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('ecoruta_token');
@@ -8,7 +9,7 @@ async function apiRequest(path, options = {}) {
 
   const separator = path.includes('?') ? '&' : '?';
   const url = `${API_BASE}/api${path}${separator}access_token=${encodeURIComponent(token)}`;
-  const response = await fetch(url, {
+  const response = await authenticatedFetch(url, {
     ...options,
     credentials: 'include',
     headers: {
@@ -29,12 +30,9 @@ async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    if (response.status === 401) {
-      localStorage.removeItem('ecoruta_token');
-      localStorage.removeItem('ecoruta_user');
-      window.dispatchEvent(new Event('ecoruta-auth-required'));
-    }
-    throw new Error(data.message || 'No se pudo completar la operación.');
+    const error = new Error(data.message || 'No se pudo completar la operación.');
+    error.errors = data.errors || [];
+    throw error;
   }
 
   return data;
@@ -48,6 +46,13 @@ export function createCliente(data) {
   return apiRequest('/clientes', {
     method: 'POST',
     body: JSON.stringify(data)
+  });
+}
+
+export function importClientes(clientes) {
+  return apiRequest('/clientes/import', {
+    method: 'POST',
+    body: JSON.stringify({ clientes })
   });
 }
 

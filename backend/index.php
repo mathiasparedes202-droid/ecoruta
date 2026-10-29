@@ -135,6 +135,10 @@ if ($method === 'GET' && $path === '/api/clientes') {
     getClientes(requireAuth());
 }
 
+if ($method === 'POST' && $path === '/api/clientes/import') {
+    importClientesController(requireAuth());
+}
+
 if ($method === 'POST' && $path === '/api/clientes') {
     storeCliente(requireAuth());
 }
