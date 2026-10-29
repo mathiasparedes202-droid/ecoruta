@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "puppeteer": "^25.4.0"
+    "puppeteer": "^25.4.0",
+    "qrcode": "^1.5.4"
   }
 }

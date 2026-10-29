@@ -28,7 +28,7 @@ const generarPdf = async (factura) => {
       throw error;
     }
 
-    const html = facturaTemplate.generarFacturaHtml(
+    const html = await facturaTemplate.generarFacturaHtml(
       factura
     );
 

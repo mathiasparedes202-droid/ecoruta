@@ -141,7 +141,7 @@ const obtenerFactura = async (idVenta) => {
 const generarFacturaHtml = async (idVenta) => {
   const factura = await obtenerFactura(idVenta);
 
-  return facturaTemplate.generarFacturaHtml(
+  return await facturaTemplate.generarFacturaHtml(
     factura
   );
 };

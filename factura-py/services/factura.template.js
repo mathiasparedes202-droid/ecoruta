@@ -178,6 +178,50 @@ const generarFilasDetalles = (detalles = []) => {
     .join("");
 };
 
+// Genera el QR localmente, sin depender de la red.
+//
+// El PDF se renderiza con Puppeteer usando waitUntil "networkidle0", que
+// ESPERA a que carguen todas las imágenes: si el QR venía de un servicio
+// externo (api.qrserver.com), el render podía colgar o agotar el tiempo de
+// espera en el servidor y el PDF fallaba. Con qrcode el QR se convierte en
+// un data URI embebido, así el documento no necesita ninguna petición saliente.
+let QRCode = null;
+
+try {
+  QRCode = require("qrcode");
+} catch {
+  // Dependencia opcional: si no está instalada se cae a la URL externa.
+  QRCode = null;
+}
+
+/**
+ * Devuelve el atributo src del QR.
+ *
+ * @param {string|null|undefined} texto - Contenido a codificar en el QR.
+ * @returns {Promise<string>} data URI local o, como último recurso, URL externa.
+ */
+const generarQrSrc = async (texto) => {
+  if (!texto) {
+    return "";
+  }
+
+  if (QRCode) {
+    try {
+      return await QRCode.toDataURL(String(texto), {
+        margin: 1,
+        width: 140,
+        errorCorrectionLevel: "M"
+      });
+    } catch {
+      // Si falla la generación local, se usa el servicio externo.
+    }
+  }
+
+  return `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
+    texto
+  )}`;
+};
+
 /**
  * Genera el documento HTML completo de una factura.
  *
@@ -185,9 +229,9 @@ const generarFilasDetalles = (detalles = []) => {
  * factura.mapper.js y no depende directamente de Sequelize.
  *
  * @param {Object} factura - Datos normalizados de la factura.
- * @returns {string} Documento HTML completo.
+ * @returns {Promise<string>} Documento HTML completo.
  */
-const generarFacturaHtml = (factura) => {
+const generarFacturaHtml = async (factura) => {
   const {
     emisor = {},
     factura: datosFactura = {},
@@ -220,6 +264,8 @@ const generarFacturaHtml = (factura) => {
   const filasDetalles = generarFilasDetalles(
     detalles
   );
+
+  const qrSrc = await generarQrSrc(factura.qrTexto);
 
   return `
     <!DOCTYPE html>
@@ -1019,10 +1065,8 @@ const generarFacturaHtml = (factura) => {
 
           <div class="verificacion">
             ${
-              factura.qrTexto
-                ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
-                  factura.qrTexto
-                )}" alt="QR de la factura" width="140" height="140" style="display:block;margin:0 auto 8px">`
+              qrSrc
+                ? `<img src="${qrSrc}" alt="QR de la factura" width="140" height="140" style="display:block;margin:0 auto 8px">`
                 : ""
             }
             <strong>Sello digital (control interno):</strong>

@@ -27,7 +27,7 @@ async function main() {
   }
   const output = path.resolve(args.output);
   if (args.mode === 'html') {
-    fs.writeFileSync(output, template.generarFacturaHtml(factura), 'utf8');
+    fs.writeFileSync(output, await template.generarFacturaHtml(factura), 'utf8');
   } else {
     // Carga perezosa: el modo HTML no necesita puppeteer/Chromium instalado.
     const pdfService = require('./services/factura-pdf.service');

@@ -462,10 +462,24 @@ function deliveryFacturaFile(int $idFactura, string $mode): string
             if (is_file($outputPath)) @unlink($outputPath);
             return deliveryFacturaWriteFallbackHtml($model);
         }
-        if (stripos($err, 'Could not find Chrome') !== false || stripos($err, 'puppeteer') !== false || stripos($err, 'chrome') !== false) {
-            sendJson(['message' => 'PDF no disponible en este servidor (falta Chromium). Usa KuDE/HTML.'], 501);
+        // El stack de Node SIEMPRE contiene "puppeteer"/"chrome" (ahí vive el
+        // módulo), así que clasificar por esas palabras ocultaba el error real
+        // bajo el mensaje de "falta Chromium". Solo se usa ese mensaje cuando
+        // el error lo dice explícitamente (navegador no instalado/encontrado).
+        $faltaChromium = preg_match(
+            "/could not find (chrome|chromium)|browser was not found|executable doesn't exist|failed to launch the browser|no se encontr[oó] (chrome|chromium)/i",
+            $err
+        ) === 1;
+        if ($faltaChromium) {
+            sendJson(['message' => 'PDF no disponible en este servidor (no se pudo iniciar Chromium). Usa KuDE/HTML.'], 501);
         }
-        sendJson(['message' => 'Error generando comprobante: ' . mb_substr(trim($err), 0, 300)], 500);
+        // Primer renglón del stack: es el mensaje real del error (el resto es ruido).
+        $lineas = preg_split('/\r\n|\r|\n/', trim($err)) ?: [];
+        $detalle = trim($lineas[0] ?? '');
+        if ($detalle === '') {
+            $detalle = trim($err);
+        }
+        sendJson(['message' => 'Error generando comprobante: ' . mb_substr($detalle, 0, 300)], 500);
     }
     return $outputPath;
 }
