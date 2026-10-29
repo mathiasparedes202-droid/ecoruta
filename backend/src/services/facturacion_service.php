@@ -165,16 +165,20 @@ function facturaPublicUrl(int $idFactura): string
  * (tasa 5%) — nunca se suma encima del precio. La gravada es el bruto
  * menos ese IVA, de modo que gravada + IVA = total cobrado.
  *
- * Ej: 10.000 con IVA 10% → IVA 909,09 y gravada 9.090,91 (9.090,91 + 909,09 = 10.000).
- * Ej: 1.050 con IVA 5%  → IVA 50,00 y gravada 1.000,00.
+ * El resultado se redondea a GUARANÍES ENTEROS (los comprobantes no
+ * llevan decimales):
+ *
+ * Ej: 7.000 con IVA 10%  → IVA 636 y gravada 6.364 (6.364 + 636 = 7.000).
+ * Ej: 10.000 con IVA 10% → IVA 909 y gravada 9.091 (9.091 + 909 = 10.000).
+ * Ej: 1.050 con IVA 5%   → IVA 50 y gravada 1.000 (1.000 + 50 = 1.050).
  */
 function calcularIvaIncluido(float $total, int $tasa = 10): array
 {
-    $iva10 = $tasa === 10 ? round($total / 11, 2) : 0.0;
-    $iva5 = $tasa === 5 ? round($total / 21, 2) : 0.0;
+    $iva10 = $tasa === 10 ? (float) round($total / 11) : 0.0;
+    $iva5 = $tasa === 5 ? (float) round($total / 21) : 0.0;
 
     return [
-        'gravada_10' => $tasa === 10 ? round($total - $iva10, 2) : 0.0,
+        'gravada_10' => $tasa === 10 ? (float) round($total - $iva10) : 0.0,
         'iva_10' => $iva10,
         'gravada_5' => $tasa === 5 ? round($total - $iva5, 2) : 0.0,
         'iva_5' => $iva5,

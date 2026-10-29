@@ -76,12 +76,13 @@ const obtenerValoresPorIva = (detalle) => {
   );
 
   // El precio YA trae el IVA adentro: la columna gravada de la factura es
-  // el bruto menos su IVA (extracción con / 11 para 10% y / 21 para 5%),
-  // para que gravado + IVA = total de la factura.
+  // el bruto menos su IVA, redondeado a GUARANÍES ENTEROS (extracción con
+  // / 11 para 10% y / 21 para 5%), para que gravado + IVA = total:
+  // 7.000 -> gravada 6.364 + IVA 636 = 7.000.
   const iva = tipoIva === 10
-    ? subtotal / 11
+    ? Math.round(subtotal / 11)
     : tipoIva === 5
-      ? subtotal / 21
+      ? Math.round(subtotal / 21)
       : 0;
 
   return {

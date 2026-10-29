@@ -381,21 +381,23 @@ class CompraController extends Controller
             foreach ($detalles as $d) {
                 $nombre = htmlspecialchars($d['nombre_insumo'] ?? $d['descripcion'] ?? '');
                 $cant = (int)($d['cantidad'] ?? 0);
-                $precio = number_format((float)($d['precio_unitario'] ?? 0), 2, ',', '.');
+                // Guaranie entero: los comprobantes no llevan decimales.
+                $precio = number_format((float)($d['precio_unitario'] ?? 0), 0, ',', '.');
                 $sub = $cant * (float)($d['precio_unitario'] ?? 0);
                 $subtotal += $sub;
-                $html .= "<tr><td>$nombre</td><td>$cant</td><td>₲ $precio</td><td>₲ " . number_format($sub, 2, ',', '.') . "</td></tr>";
+                $html .= "<tr><td>$nombre</td><td>$cant</td><td>₲ $precio</td><td>₲ " . number_format($sub, 0, ',', '.') . "</td></tr>";
             }
             $html .= '</tbody></table>';
 
             // Precios CON IVA incluido: sin total guardado, el IVA se extrée
-            // dividiendo el bruto entre 11 (10%) y el total es el propio bruto.
-            $iva = isset($compra['total_iva']) ? (float)$compra['total_iva'] : round($subtotal / 11, 2);
-            $total = isset($compra['total_compra']) ? (float)$compra['total_compra'] : round($subtotal, 2);
+            // en guaraníes enteros dividiendo el bruto entre 11 (10%) y el
+            // total es el propio bruto. Ej: 7.000 -> IVA 636, total 7.000.
+            $iva = isset($compra['total_iva']) ? (float)$compra['total_iva'] : round($subtotal / 11);
+            $total = isset($compra['total_compra']) ? (float)$compra['total_compra'] : round($subtotal);
 
-            $html .= '<div class="totales"><div>Subtotal: ₲ ' . number_format($subtotal, 2, ',', '.') . '</div>';
-            $html .= '<div>IVA (ya incluido en el subtotal): ₲ ' . number_format($iva, 2, ',', '.') . '</div>';
-            $html .= '<div style="font-weight:700;margin-top:8px">Total: ₲ ' . number_format($total, 2, ',', '.') . '</div></div>';
+            $html .= '<div class="totales"><div>Subtotal: ₲ ' . number_format($subtotal, 0, ',', '.') . '</div>';
+            $html .= '<div>IVA (ya incluido en el subtotal): ₲ ' . number_format($iva, 0, ',', '.') . '</div>';
+            $html .= '<div style="font-weight:700;margin-top:8px">Total: ₲ ' . number_format($total, 0, ',', '.') . '</div></div>';
 
             $html .= '<script>window.onload = function(){ window.print(); };</script>';
 

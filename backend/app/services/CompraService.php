@@ -96,14 +96,15 @@ class CompraService
             $subtotal = $cantidad * $precioUnitario;
             $detalle['subtotal'] = $subtotal;
 
-            // Precios CON IVA incluido: IVA extruido (bruto / 21 ó / 11) y
-            // gravada = bruto − IVA, igual que en ventas y facturas.
+            // Precios CON IVA incluido: IVA extruido en GUARANÍES ENTEROS
+            // (bruto / 21 ó / 11) y gravada = bruto − IVA, igual que en
+            // ventas y facturas. Ej: 7.000 -> 6.364 + 636 = 7.000.
             if ($ivaTipo == 5) {
-                $ivaLinea = $subtotal / 21;
+                $ivaLinea = round($subtotal / 21);
                 $subtotalIva5 += $subtotal - $ivaLinea;
                 $iva5 += $ivaLinea;
             } elseif ($ivaTipo == 10) {
-                $ivaLinea = $subtotal / 11;
+                $ivaLinea = round($subtotal / 11);
                 $subtotalIva10 += $subtotal - $ivaLinea;
                 $iva10 += $ivaLinea;
             } else {
@@ -212,12 +213,13 @@ class CompraService
             $lineTotal = ($cantidad * $precioUnitario) - $descuento;
             $subtotal += $lineTotal;
 
-            // Precio con IVA incluido: extraer el IVA (bruto / 11 ó / 21).
+            // Precio con IVA incluido: extraer el IVA en guaraníes enteros
+            // (bruto / 11 ó / 21). Ej: 7.000 -> IVA 636.
             $ivaTipo = (int) ($detalle['iva_tipo'] ?? 10);
             if ($ivaTipo === 5) {
-                $totalIva += $lineTotal / 21;
+                $totalIva += round($lineTotal / 21);
             } elseif ($ivaTipo === 10) {
-                $totalIva += $lineTotal / 11;
+                $totalIva += round($lineTotal / 11);
             }
         }
 
