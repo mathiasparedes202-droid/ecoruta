@@ -26,6 +26,7 @@ CREATE TABLE `clientes` (
   `id_cliente` int(11) NOT NULL AUTO_INCREMENT,
   `id_comercio` int(11) NOT NULL,
   `nombre` varchar(150) NOT NULL,
+  `ruc_ci` varchar(20) DEFAULT NULL,
   `telefono` varchar(20) DEFAULT NULL,
   `direccion` text NOT NULL,
   `lat` decimal(9,6) NOT NULL,
@@ -47,7 +48,7 @@ CREATE TABLE `clientes` (
 
 LOCK TABLES `clientes` WRITE;
 /*!40000 ALTER TABLE `clientes` DISABLE KEYS */;
-INSERT INTO `clientes` VALUES (1,1,'Maria Rodriguez','+595 981 552244','Av. Mariscal Lopez 2233, Asuncion',-25.263700,-57.575900,'Casa blanca, frente a plaza','2026-09-04 22:55:55');
+INSERT INTO `clientes` VALUES (1,1,'Maria Rodriguez',NULL,'+595 981 552244','Av. Mariscal Lopez 2233, Asuncion',-25.263700,-57.575900,'Casa blanca, frente a plaza','2026-09-04 22:55:55');
 /*!40000 ALTER TABLE `clientes` ENABLE KEYS */;
 UNLOCK TABLES;
 

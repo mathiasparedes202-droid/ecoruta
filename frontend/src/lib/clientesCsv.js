@@ -1,14 +1,18 @@
 const REQUIRED_COLUMNS = ['nombre', 'direccion', 'lat', 'lng'];
-const OPTIONAL_COLUMNS = ['telefono', 'referencia'];
+const OPTIONAL_COLUMNS = ['ruc_ci', 'telefono', 'referencia'];
 const MAX_CLIENTES_IMPORT = 500;
 
 function normalizeHeader(value) {
-  return value
+  const header = value
     .replace(/^\uFEFF/, '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/[\s/-]+/g, '_')
+    .replace(/_+/g, '_');
+  return header === 'ruc_c_i' ? 'ruc_ci' : header;
 }
 
 function parseRows(text, delimiter) {
@@ -109,6 +113,9 @@ export function parseClientesCsv(text) {
     const errors = [];
     if (cliente.nombre.length < 2) errors.push('nombre: mínimo 2 caracteres');
     if (!cliente.direccion) errors.push('dirección obligatoria');
+    if (cliente.ruc_ci && !/^(?:\d{5,8}|\d{8}-\d)$/.test(cliente.ruc_ci)) {
+      errors.push('RUC / C.I. inválido');
+    }
     if (cliente.telefono && !/^\+?[0-9\s-]{7,20}$/.test(cliente.telefono)) {
       errors.push('teléfono inválido');
     }
@@ -138,7 +145,7 @@ export function parseClientesCsv(text) {
 }
 
 export function downloadClientesCsvTemplate() {
-  const content = '\uFEFFnombre;telefono;direccion;referencia;lat;lng\r\n';
+  const content = '\uFEFFnombre;ruc_ci;telefono;direccion;referencia;lat;lng\r\n';
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

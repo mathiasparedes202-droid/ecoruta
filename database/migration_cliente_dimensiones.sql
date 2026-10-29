@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   id_cliente INT PRIMARY KEY AUTO_INCREMENT,
   id_comercio INT NOT NULL,
   nombre VARCHAR(150) NOT NULL,
+  ruc_ci VARCHAR(20) NULL,
   telefono VARCHAR(20) NULL,
   direccion TEXT NOT NULL,
   lat DECIMAL(9,6) NOT NULL,

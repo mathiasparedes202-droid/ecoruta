@@ -184,6 +184,7 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
     if (!q) return clientes;
     return clientes.filter((c) =>
       (c.nombre || '').toLowerCase().includes(q) ||
+      (c.ruc_ci || '').toLowerCase().includes(q) ||
       (c.direccion || '').toLowerCase().includes(q)
     );
   }, [clientes, clientQuery]);
@@ -638,7 +639,7 @@ export default function NewOrderPage({ user, onBack, onNavigate }) {
                         <UserRound size={15} />
                         <span>
                           <strong>{cliente.nombre}</strong>
-                          <small>{cliente.direccion}</small>
+                          <small>{cliente.direccion}{cliente.ruc_ci ? ` · RUC / C.I.: ${cliente.ruc_ci}` : ''}</small>
                         </span>
                       </button>
                     ))

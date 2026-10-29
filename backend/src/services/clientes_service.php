@@ -22,7 +22,7 @@ function commerceIdOfUser(int $userId): ?int
 function listClientes(int $commerceId): array
 {
     $statement = database()->prepare(
-        'SELECT id_cliente, id_comercio, nombre, telefono, direccion, lat, lng, referencia, fecha_creacion,
+        'SELECT id_cliente, id_comercio, nombre, ruc_ci, telefono, direccion, lat, lng, referencia, fecha_creacion,
                 (SELECT COUNT(*) FROM pedidos p WHERE p.id_cliente = c.id_cliente AND p.id_estado = 4) AS entregas,
                 (SELECT COUNT(*) FROM pedidos p WHERE p.id_cliente = c.id_cliente AND p.id_estado IN (1, 2, 3)) AS en_curso
          FROM clientes c
@@ -35,6 +35,7 @@ function listClientes(int $commerceId): array
             'id_cliente' => (int) $row['id_cliente'],
             'id_comercio' => (int) $row['id_comercio'],
             'nombre' => $row['nombre'],
+            'ruc_ci' => $row['ruc_ci'],
             'telefono' => $row['telefono'],
             'direccion' => $row['direccion'],
             'lat' => (float) $row['lat'],
@@ -59,6 +60,19 @@ function listAllClientes(): array
     return $statement->fetchAll();
 }
 
+function clienteRucCiValido(mixed $value): bool
+{
+    if ($value === null || $value === '') {
+        return true;
+    }
+    if (!is_string($value) && !is_int($value)) {
+        return false;
+    }
+
+    $rucCi = trim((string) $value);
+    return $rucCi === '' || preg_match('/^(?:\d{5,8}|\d{8}-\d)$/', $rucCi) === 1;
+}
+
 function validateClienteBody(array $body): void
 {
     requireFields($body, ['nombre', 'direccion', 'lat', 'lng']);
@@ -74,6 +88,9 @@ function validateClienteBody(array $body): void
     if (isset($body['telefono']) && $body['telefono'] !== '' && !preg_match('/^[+]?[0-9\s-]{7,20}$/', (string) $body['telefono'])) {
         sendJson(['message' => 'El teléfono del cliente no es válido'], 422);
     }
+    if (!clienteRucCiValido($body['ruc_ci'] ?? null)) {
+        sendJson(['message' => 'El RUC / C.I. debe tener entre 5 y 8 dígitos o formato RUC 12345678-9'], 422);
+    }
 }
 
 function createCliente(int $commerceId, array $body): array
@@ -81,12 +98,13 @@ function createCliente(int $commerceId, array $body): array
     validateClienteBody($body);
 
     $statement = database()->prepare(
-        'INSERT INTO clientes (id_comercio, nombre, telefono, direccion, lat, lng, referencia)
-         VALUES (:commerce, :name, :phone, :address, :lat, :lng, :reference)'
+        'INSERT INTO clientes (id_comercio, nombre, ruc_ci, telefono, direccion, lat, lng, referencia)
+         VALUES (:commerce, :name, :ruc_ci, :phone, :address, :lat, :lng, :reference)'
     );
     $statement->execute([
         'commerce' => $commerceId,
         'name' => trim((string) $body['nombre']),
+        'ruc_ci' => trim((string) ($body['ruc_ci'] ?? '')) ?: null,
         'phone' => trim((string) ($body['telefono'] ?? '')) ?: null,
         'address' => trim((string) $body['direccion']),
         'lat' => (float) $body['lat'],
@@ -116,6 +134,7 @@ function importClientes(int $commerceId, array $clientes): int
         $rowErrors = [];
         $nombre = trim((string) ($cliente['nombre'] ?? ''));
         $direccion = trim((string) ($cliente['direccion'] ?? ''));
+        $rucCi = $cliente['ruc_ci'] ?? null;
         $telefono = trim((string) ($cliente['telefono'] ?? ''));
         $lat = $cliente['lat'] ?? null;
         $lng = $cliente['lng'] ?? null;
@@ -125,6 +144,9 @@ function importClientes(int $commerceId, array $clientes): int
         }
         if ($direccion === '') {
             $rowErrors[] = 'La dirección es obligatoria';
+        }
+        if (!clienteRucCiValido($rucCi)) {
+            $rowErrors[] = 'El RUC / C.I. debe tener entre 5 y 8 dígitos o formato RUC 12345678-9';
         }
         if ($telefono !== '' && !preg_match('/^[+]?[0-9\s-]{7,20}$/', $telefono)) {
             $rowErrors[] = 'El teléfono no es válido';
@@ -148,8 +170,8 @@ function importClientes(int $commerceId, array $clientes): int
 
     $pdo = database();
     $statement = $pdo->prepare(
-        'INSERT INTO clientes (id_comercio, nombre, telefono, direccion, lat, lng, referencia)
-         VALUES (:commerce, :name, :phone, :address, :lat, :lng, :reference)'
+        'INSERT INTO clientes (id_comercio, nombre, ruc_ci, telefono, direccion, lat, lng, referencia)
+         VALUES (:commerce, :name, :ruc_ci, :phone, :address, :lat, :lng, :reference)'
     );
 
     $pdo->beginTransaction();
@@ -158,6 +180,7 @@ function importClientes(int $commerceId, array $clientes): int
             $statement->execute([
                 'commerce' => $commerceId,
                 'name' => trim((string) $cliente['nombre']),
+                'ruc_ci' => trim((string) ($cliente['ruc_ci'] ?? '')) ?: null,
                 'phone' => trim((string) ($cliente['telefono'] ?? '')) ?: null,
                 'address' => trim((string) $cliente['direccion']),
                 'lat' => (float) $cliente['lat'],
@@ -179,7 +202,7 @@ function importClientes(int $commerceId, array $clientes): int
 function findCliente(int $clienteId): array
 {
     $statement = database()->prepare(
-        'SELECT id_cliente, id_comercio, nombre, telefono, direccion, lat, lng, referencia, fecha_creacion
+        'SELECT id_cliente, id_comercio, nombre, ruc_ci, telefono, direccion, lat, lng, referencia, fecha_creacion
          FROM clientes WHERE id_cliente = :id LIMIT 1'
     );
     $statement->execute(['id' => $clienteId]);
@@ -215,6 +238,14 @@ function updateCliente(int $clienteId, int $commerceId, array $body): array
             $sets[] = "$field = :$field";
             $params[$field] = trim((string) $body[$field]);
         }
+    }
+    if (array_key_exists('ruc_ci', $body)) {
+        $rucCi = trim((string) $body['ruc_ci']);
+        if (!clienteRucCiValido($rucCi)) {
+            sendJson(['message' => 'El RUC / C.I. debe tener entre 5 y 8 dígitos o formato RUC 12345678-9'], 422);
+        }
+        $sets[] = 'ruc_ci = :ruc_ci';
+        $params['ruc_ci'] = $rucCi !== '' ? $rucCi : null;
     }
     if (isset($body['lat']) && $body['lat'] !== '' && is_numeric($body['lat'])) {
         $sets[] = 'lat = :lat';

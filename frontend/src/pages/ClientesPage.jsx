@@ -38,6 +38,7 @@ const MARKER = L.divIcon({
 
 const emptyForm = {
   nombre: '',
+  ruc_ci: '',
   telefono: '',
   direccion: '',
   referencia: ''
@@ -67,7 +68,7 @@ export default function ClientesPage({ user }) {
   const pickRef = useRef(null);
 
   const clientesFiltrados = clientes.filter((cliente) => (
-    [cliente.nombre, cliente.telefono, cliente.direccion]
+    [cliente.nombre, cliente.ruc_ci, cliente.telefono, cliente.direccion]
       .some((value) => String(value || '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
   ));
 
@@ -158,6 +159,7 @@ export default function ClientesPage({ user }) {
   function startEdit(cliente) {
     setForm({
       nombre: cliente.nombre || '',
+      ruc_ci: cliente.ruc_ci || '',
       telefono: cliente.telefono || '',
       direccion: cliente.direccion || '',
       referencia: cliente.referencia || ''
@@ -178,6 +180,9 @@ export default function ClientesPage({ user }) {
   function validate() {
     const e = {};
     if (form.nombre.trim().length < 2) e.nombre = 'El nombre debe tener al menos 2 caracteres';
+    if (form.ruc_ci.trim() && !/^(?:\d{5,8}|\d{8}-\d)$/.test(form.ruc_ci.trim())) {
+      e.ruc_ci = 'Ingresá entre 5 y 8 dígitos o un RUC como 80012345-6';
+    }
     if (!form.direccion.trim()) e.direccion = 'La dirección es obligatoria';
     if (form.telefono.trim() && !/^\+?[0-9\s-]{7,20}$/.test(form.telefono.trim())) e.telefono = 'Teléfono inválido';
     if (!coords) e.location = 'Marca la ubicación exacta del cliente en el mapa';
@@ -196,6 +201,7 @@ export default function ClientesPage({ user }) {
     try {
       const payload = {
         nombre: form.nombre.trim(),
+        ruc_ci: form.ruc_ci.trim(),
         telefono: form.telefono.trim() || undefined,
         direccion: form.direccion.trim(),
         referencia: form.referencia.trim() || undefined,
@@ -335,6 +341,12 @@ export default function ClientesPage({ user }) {
           </label>
 
           <label className="new-order-field">
+            <span>RUC / C.I.</span>
+            <input className="new-order-input" value={form.ruc_ci} onChange={(e) => set('ruc_ci', e.target.value)} placeholder="Ej: 1234567 o 80012345-6" maxLength={20} />
+            {errors.ruc_ci && <small className="new-order-error">{errors.ruc_ci}</small>}
+          </label>
+
+          <label className="new-order-field">
             <span>Teléfono</span>
             <input className="new-order-input" value={form.telefono} onChange={(e) => set('telefono', e.target.value)} placeholder="Ej: +595 981 123456" />
             {errors.telefono && <small className="new-order-error">{errors.telefono}</small>}
@@ -412,7 +424,7 @@ export default function ClientesPage({ user }) {
               <div className="clientes-import__heading">
                 <div>
                   <strong>Importá varios clientes</strong>
-                  <p>Completá la plantilla CSV. Cada fila necesita nombre, dirección y coordenadas dentro de Paraguay; podés copiarlas desde el mapa del formulario.</p>
+                  <p>Completá la plantilla CSV. RUC / C.I. es opcional; cada fila necesita nombre, dirección y coordenadas dentro de Paraguay.</p>
                 </div>
                 <button type="button" className="clientes-import__template" onClick={downloadClientesCsvTemplate}>
                   <Download size={15} /> Descargar plantilla
@@ -489,6 +501,9 @@ export default function ClientesPage({ user }) {
 
                   {cliente.telefono && (
                     <p className="cliente-card__row"><Phone size={13} /> <span>{cliente.telefono}</span></p>
+                  )}
+                  {cliente.ruc_ci && (
+                    <p className="cliente-card__row"><UserRound size={13} /> <span>RUC / C.I.: {cliente.ruc_ci}</span></p>
                   )}
                   <p className="cliente-card__row"><MapPin size={13} /> <span>{cliente.direccion}{cliente.referencia ? ` · ${cliente.referencia}` : ''}</span></p>
                   <p className="cliente-card__row cliente-card__coords">
