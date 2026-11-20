@@ -163,6 +163,42 @@ const mapearVentaAFactura = (venta) => {
     ? venta.detalles.map(mapearDetalle)
     : [];
 
+  // Guaraníes ENTEROS: los datos viejos están guardados con decimales
+  // (p. ej. 951.094,55 / 95.109,45) y el comprobante debe mostrar enteros.
+  // Además se fuerza SUBTOTAL + IVA - descuento = TOTAL exacto contra
+  // total_factura, para que la suma mostrada cuadre siempre.
+  const totalR = Math.round(
+    convertirANumero(venta.total_factura)
+  );
+  const iva5R = Math.round(
+    convertirANumero(venta.iva_5)
+  );
+  const iva10R = Math.round(
+    convertirANumero(venta.iva_10)
+  );
+  const exentaR = Math.round(
+    convertirANumero(venta.subtotal_iva_exenta)
+  );
+  const grav5R = Math.round(
+    convertirANumero(venta.subtotal_iva_5)
+  );
+  const liquidacionGuardadaR = Math.round(
+    convertirANumero(venta.total_liquidacion)
+  );
+  const liquidacionR =
+    liquidacionGuardadaR > 0
+      ? liquidacionGuardadaR
+      : iva5R + iva10R;
+  const grav10R =
+    totalR > 0
+      ? Math.max(
+          0,
+          totalR - exentaR - grav5R - liquidacionR
+        )
+      : Math.round(
+          convertirANumero(venta.subtotal_iva_10)
+        );
+
   return {
     idVenta: venta.id_venta,
 
@@ -221,45 +257,29 @@ const mapearVentaAFactura = (venta) => {
     detalles,
 
     resumen: {
-      subtotalExenta: convertirANumero(
-        venta.subtotal_iva_exenta
+      subtotalExenta: exentaR,
+
+      subtotalIva5: grav5R,
+
+      subtotalIva10: grav10R,
+
+      iva5: iva5R,
+
+      iva10: iva10R,
+
+      totalIva: iva5R + iva10R,
+
+      liquidacionIva5: Math.round(
+        convertirANumero(venta.liquidacion_iva_5)
       ),
 
-      subtotalIva5: convertirANumero(
-        venta.subtotal_iva_5
+      liquidacionIva10: Math.round(
+        convertirANumero(venta.liquidacion_iva_10)
       ),
 
-      subtotalIva10: convertirANumero(
-        venta.subtotal_iva_10
-      ),
+      totalLiquidacion: liquidacionR,
 
-      iva5: convertirANumero(
-        venta.iva_5
-      ),
-
-      iva10: convertirANumero(
-        venta.iva_10
-      ),
-
-      totalIva: convertirANumero(
-        venta.total_iva
-      ),
-
-      liquidacionIva5: convertirANumero(
-        venta.liquidacion_iva_5
-      ),
-
-      liquidacionIva10: convertirANumero(
-        venta.liquidacion_iva_10
-      ),
-
-      totalLiquidacion: convertirANumero(
-        venta.total_liquidacion
-      ),
-
-      totalFactura: convertirANumero(
-        venta.total_factura
-      )
+      totalFactura: totalR
     }
   };
 };

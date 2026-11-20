@@ -14,3 +14,7 @@ tools/*-private*
 sync-agent/data/
 sync-hub/data/
 sync-connector/data/
+# Paquetes de entrega y salidas sueltas de la consola (no van al repositorio)
+/*.zip
+/out.txt
+/getMessage()

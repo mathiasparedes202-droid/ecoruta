@@ -27,9 +27,11 @@ const escaparHtml = (valor) => {
 const formatearMoneda = (monto) => {
   const valor = Number(monto) || 0;
 
+  // Guaraníes ENTEROS: los comprobantes paraguayos no llevan decimales,
+  // así que todo monto se redondea al guaraní más cercano
+  // (951.094,55 y 95.109,45 se muestran como 951.095 y 95.109).
   return new Intl.NumberFormat("es-PY", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 0
   }).format(valor);
 };
 
@@ -246,7 +248,8 @@ const generarFacturaHtml = async (factura) => {
   const esCredito =
     datosFactura.condicionVenta === "Crédito";
 
-  // Cuadre de montos: SUBTOTAL (gravado) + IVA - descuento = TOTAL A PAGAR.
+  // Cuadre de montos: SUBTOTAL (gravado) + IVA - descuento = TOTAL A PAGAR,
+  // todo redondeado a GUARANÍES ENTEROS para que la suma mostrada sea exacta.
   const subtotalGravado =
     (resumen.subtotalExenta || 0) +
     (resumen.subtotalIva5 || 0) +
@@ -258,8 +261,9 @@ const generarFacturaHtml = async (factura) => {
     resumen.totalLiquidacion ||
     (resumen.iva5 || 0) + (resumen.iva10 || 0);
 
-  const totalAPagar =
-    subtotalGravado - descuentoVenta + totalLiquidacionIva;
+  const totalAPagar = Math.round(
+    subtotalGravado - descuentoVenta + totalLiquidacionIva
+  );
 
   const filasDetalles = generarFilasDetalles(
     detalles
