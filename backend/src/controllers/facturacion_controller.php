@@ -420,7 +420,7 @@ function facturaHtmlFallback(array $model): string
         . '.letras{border:1px solid #000;border-top:0;padding:6px 8px;font-size:9px;font-weight:700;text-transform:uppercase}'
         . '.liq{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;border:1px solid #000;border-top:0}.liq>div{min-height:31px;padding:7px 4px;border-right:1px solid #000;text-align:center}.liq>div:last-child{border-right:0}'
         . '.verif{margin-top:10px;border:1px solid #000;padding:6px 8px;font-size:8px;line-height:1.5;word-break:break-all}</style></head><body><main class="factura">'
-        . '<div class="cinta">FACTURA ELECTRÓNICA · KuDE — REPRESENTACIÓN IMPRESA</div>' . $anulada
+        . '<div class="cinta">FACTURA ELECTRÓNICA · KuDE</div>' . $anulada
         . '<header class="enc"><section class="em"><h1 style="margin:0 0 5px;font-size:17px;text-transform:uppercase">' . facturaEsc($emisor['razonSocial'] ?? '') . '</h1>'
         . '<p><strong>RUC:</strong> ' . facturaEsc($emisor['ruc'] ?? '') . '</p><p>' . facturaEsc($emisor['direccion'] ?? '') . '</p>'
         . '<p>' . facturaEsc($emisor['telefono'] ?? '') . '</p><p>' . facturaEsc($emisor['email'] ?? '') . '</p></section>'
@@ -459,7 +459,7 @@ function facturaHtmlFallback(array $model): string
         . '<strong>Sello digital (control interno):</strong> ' . facturaEsc($model['cdc'] ?? '—') . '<br>'
         . '<strong>Verifique su factura (escanee el QR o abra el enlace):</strong> ' . facturaEsc($model['qrTexto'] ?? '—') . '<br>'
         . '<strong>Timbrado vigente hasta:</strong> ' . facturaEsc($emisor['vigenciaTimbrado'] ?? '—')
-        . ' — Esta es una representación impresa del documento tributario electrónico.</div>'
+        . '</div>'
         . '</main></body></html>';
 }
 

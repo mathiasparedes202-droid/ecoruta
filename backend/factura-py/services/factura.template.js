@@ -637,7 +637,7 @@ const generarFacturaHtml = async (factura) => {
         <main class="factura">
 
           <div class="cinta-titulo">
-            FACTURA ELECTRÓNICA · KuDE — REPRESENTACIÓN IMPRESA
+            FACTURA ELECTRÓNICA · KuDE
           </div>
 
           ${
@@ -1081,7 +1081,6 @@ const generarFacturaHtml = async (factura) => {
             <br>
             <strong>Timbrado vigente hasta:</strong>
             ${escaparHtml(emisor.vigenciaTimbrado || "—")}
-            — Esta es una representación impresa del documento tributario electrónico.
           </div>
 
         </main>
