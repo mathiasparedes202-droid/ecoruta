@@ -18,3 +18,7 @@ sync-connector/data/
 /*.zip
 /out.txt
 /getMessage()
+
+# Artefactos de Python
+__pycache__/
+*.pyc
