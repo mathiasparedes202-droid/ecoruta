@@ -119,52 +119,11 @@ function normalizarImportesFactura(array $fac, float $tarifaPedido): array
 
 function kudeFacturaController(int $id): never
 {
-    $fac = facturaConItems($id);
-    if (!$fac) {
-        sendJson(['message' => 'Factura no encontrada'], 404);
-    }
-    $pedido = database()->prepare('SELECT tarifa_ecologica FROM pedidos WHERE id_pedido = :id LIMIT 1');
-    $pedido->execute(['id' => (int) $fac['id_pedido']]);
-    $tarifaPedido = (float) ($pedido->fetchColumn() ?: 0);
-    $importes = normalizarImportesFactura($fac, $tarifaPedido);
-    // QR en vivo: siempre apunta al link que reabre esta factura (no depende
-    // del texto guardado, que en facturas antiguas era solo un código seco).
-    $qrLink = facturaPublicUrl($id);
-    $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' . urlencode($qrLink);
-    // Normaliza ítems antiguos (guardaban el total con IVA en el ítem).
-    $suma10 = 0.0;
-    foreach (($fac['items'] ?? []) as $it) {
-        if ((int) ($it['iva_tipo'] ?? 10) === 10) {
-            $suma10 += (float) ($it['subtotal'] ?? 0);
-        }
-    }
-    $gravada10 = (float) $importes['gravada10'];
-    $factor = ($suma10 > 0 && $gravada10 > 0 && abs($suma10 - $gravada10) > 0.01) ? ($gravada10 / $suma10) : 1.0;
-    $rows = '';
-    foreach (($fac['items'] ?? []) as $it) {
-        $rows .= '<tr><td>' . htmlspecialchars((string) $it['concepto']) . '</td><td style="text-align:right">'
-            . htmlspecialchars((string) $it['cantidad']) . '</td><td style="text-align:right">₲ '
-            . number_format((float) $it['precio_unitario'] * $factor, 0, ',', '.') . '</td><td style="text-align:right">₲ '
-            . number_format((float) $it['subtotal'] * $factor, 0, ',', '.') . '</td></tr>';
-    }
-    $f = fn($v) => '₲ ' . number_format((float) $v, 0, ',', '.');
+    // El KuDE público usa el mismo modelo y la misma plantilla que el PDF,
+    // para que el QR muestre exactamente el comprobante y no una página aparte.
+    $model = buildDeliveryFacturaModel($id);
     header('Content-Type: text/html; charset=UTF-8');
-    echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>KuDE ' . htmlspecialchars((string) $fac['numero_completo'])
-        . '</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:24px auto;color:#111}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:6px;font-size:13px}.head{display:flex;justify-content:space-between;gap:16px}.badge{display:inline-block;padding:2px 10px;border-radius:10px;font-size:12px;font-weight:bold;background:' . ($fac['estado'] === 'Vigente' ? '#dcfce7' : '#fee2e2') . '}.muted{color:#555;font-size:12px}@media print{.noprint{display:none}}</style></head><body>'
-        . '<div class="head"><div><h2>EcoRuta S.A. — KuDE</h2><p class="muted">Documento pre-fiscal generado por el sistema (fase SIFEN en homologación).</p></div>'
-        . '<div style="text-align:center"><img src="' . $qrUrl . '" alt="QR" width="180" height="180"><br><small>' . htmlspecialchars($qrLink) . '</small></div></div>'
-        . '<p><strong>Factura:</strong> ' . htmlspecialchars((string) $fac['numero_completo'])
-        . ' <span class="badge">' . htmlspecialchars((string) $fac['estado']) . '</span><br>'
-        . '<strong>Timbrado:</strong> ' . htmlspecialchars((string) $fac['ruc_emisor']) . ' · '
-        . htmlspecialchars((string) $fac['razon_social_emisor']) . '<br>'
-        . '<strong>Receptor:</strong> ' . htmlspecialchars((string) ($fac['razon_social_receptor'] ?? '')) . ' — RUC/CI: '
-        . htmlspecialchars((string) ($fac['ruc_receptor'] ?? '—')) . '<br>'
-        . '<strong>Emisión:</strong> ' . htmlspecialchars((string) $fac['fecha_emision']) . ' · <strong>CDC (control interno):</strong> <small>' . htmlspecialchars(substr((string) $fac['cdc'], 0, 24)) . '…</small></p>'
-        . '<table><tr><th>Concepto</th><th>Cant.</th><th>P. unitario</th><th>Subtotal</th></tr>' . $rows . '</table>'
-        . '<p style="text-align:right"><strong>Total: ' . $f($importes['total']) . '</strong><br>'
-        . '<span class="muted">Gravada 10%: ' . $f($importes['gravada10']) . ' · IVA 10%: ' . $f($importes['iva10']) . '</span></p>'
-        . '<p class="muted noprint">Usá Imprimir del navegador para guardar en PDF.</p>'
-        . '</body></html>';
+    echo facturaHtmlFallback($model, true);
     exit;
 }
 
@@ -173,6 +132,8 @@ function kudeFacturaController(int $id): never
 function facturaLogoDataUrl(): ?string
 {
     $candidates = [
+        // Versión reducida (112x112) para no inflar el HTML/PDF con ~1 MB de base64.
+        dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'EcoRutaLogo-112.png',
         dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'EcoRutaLogo.png',
         dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'frontend' . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'EcoRutaLogo.png',
     ];
@@ -373,7 +334,7 @@ function facturaMontoLetras($total): string
 
 // Fallback 100% PHP (sin Node): replica la plantilla factura.template.js
 // para que el HTML/KuDE nunca dependa de factura-py ni de Chromium.
-function facturaHtmlFallback(array $model): string
+function facturaHtmlFallback(array $model, bool $paraPantalla = false): string
 {
     $emisor = $model['emisor'] ?? [];
     $fac = $model['factura'] ?? [];
@@ -408,6 +369,18 @@ function facturaHtmlFallback(array $model): string
         : '';
     $estado = (string) ($fac['estado'] ?? '');
     $anulada = $estado === 'Anulada' ? '<div style="margin-bottom:8px;padding:5px;border:2px solid #000;text-align:center;font-size:15px;font-weight:700">FACTURA ANULADA</div>' : '';
+    // Vista de pantalla (KuDE público): mismo documento, centrado y con acción
+    // de imprimir. En impresión se oculta para que el resultado sea el PDF.
+    $acciones = $paraPantalla
+        ? '<div class="acciones noprint"><span>Comprobante pre-fiscal · CDC de control interno</span>'
+            . '<button type="button" onclick="window.print()">Imprimir / Guardar PDF</button></div>'
+        : '';
+    $estiloPantalla = $paraPantalla
+        ? '.acciones{max-width:210mm;margin:0 auto 10px;display:flex;align-items:center;justify-content:space-between;gap:12px;font:12px Arial,Helvetica,sans-serif;color:#44524b}'
+            . '.acciones button{border:1px solid #0d3b2a;background:#0d3b2a;color:#fff;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer}'
+            . '@media screen{body{padding:16px;background:#e9efec}.factura{max-width:210mm;margin:0 auto;min-height:auto;box-shadow:0 2px 14px rgba(0,0,0,.16)}}'
+            . '@media print{.acciones{display:none}body{padding:0;background:#fff}.factura{max-width:none;box-shadow:none}}'
+        : '';
     return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
         . '<title>Factura ' . facturaEsc($fac['numeroFactura'] ?? '') . '</title>'
         . '<style>*{box-sizing:border-box}body{margin:0;padding:0;color:#000;background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:10px}'
@@ -419,11 +392,16 @@ function facturaHtmlFallback(array $model): string
         . '.tot{display:grid;grid-template-columns:1fr 1fr;border:1px solid #000;border-top:0}.tot div{padding:8px;font-weight:700}.tot div:last-child{text-align:right}'
         . '.letras{border:1px solid #000;border-top:0;padding:6px 8px;font-size:9px;font-weight:700;text-transform:uppercase}'
         . '.liq{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;border:1px solid #000;border-top:0}.liq>div{min-height:31px;padding:7px 4px;border-right:1px solid #000;text-align:center}.liq>div:last-child{border-right:0}'
-        . '.verif{margin-top:10px;border:1px solid #000;padding:6px 8px;font-size:8px;line-height:1.5;word-break:break-all}</style></head><body><main class="factura">'
+        . '.verif{margin-top:10px;border:1px solid #000;padding:6px 8px;font-size:8px;line-height:1.5;word-break:break-all}' . $estiloPantalla . '</style></head><body>' . $acciones . '<main class="factura">'
         . '<div class="cinta">FACTURA ELECTRÓNICA · KuDE</div>' . $anulada
-        . '<header class="enc"><section class="em"><h1 style="margin:0 0 5px;font-size:17px;text-transform:uppercase">' . facturaEsc($emisor['razonSocial'] ?? '') . '</h1>'
+        . '<header class="enc"><section class="em"><div style="display:flex;align-items:flex-start;gap:10px">'
+        . '<div style="flex:0 0 58px;width:58px;height:58px;border:1px solid #000;display:flex;align-items:center;justify-content:center;font-size:8px;text-align:center">'
+        . (!empty($emisor['logoDataUrl']) ? '<img src="' . facturaEsc($emisor['logoDataUrl']) . '" alt="Logo" style="max-width:56px;max-height:56px">' : 'LOGO')
+        . '</div><div style="flex:1">'
+        . '<h1 style="margin:0 0 5px;font-size:17px;text-transform:uppercase">' . facturaEsc($emisor['razonSocial'] ?? '') . '</h1>'
         . '<p><strong>RUC:</strong> ' . facturaEsc($emisor['ruc'] ?? '') . '</p><p>' . facturaEsc($emisor['direccion'] ?? '') . '</p>'
-        . '<p>' . facturaEsc($emisor['telefono'] ?? '') . '</p><p>' . facturaEsc($emisor['email'] ?? '') . '</p></section>'
+        . '<p>' . facturaEsc($emisor['telefono'] ?? '') . '</p><p>' . facturaEsc($emisor['email'] ?? '') . '</p>'
+        . '</div></div></section>'
         . '<section class="df"><h2 style="margin:0;text-align:center;font-size:21px">' . facturaEsc($fac['tipoComprobante'] ?? 'FACTURA') . '</h2>'
         . '<div class="nf">' . facturaEsc($fac['numeroFactura'] ?? '') . '</div>'
         . '<p class="tim">TIMBRADO N.º ' . facturaEsc($fac['timbrado'] ?? '') . '</p>'
