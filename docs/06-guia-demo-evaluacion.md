@@ -42,9 +42,9 @@ Invoke-RestMethod http://127.0.0.1:8000/api/health
 # Agente (proxy + estado web/local)
 Invoke-RestMethod http://localhost:18650/api/sync/health
 
-# Web y KuDE público (producción)
+# Web y KuDE público (producción; /kude entrega el PDF)
 Invoke-WebRequest https://ecoruta-jaxf.onrender.com -UseBasicParsing | Select-Object StatusCode
-Invoke-WebRequest https://ecoruta-jaxf.onrender.com/api/facturas/30001/kude -UseBasicParsing | Select-Object StatusCode
+Invoke-WebRequest https://ecoruta-jaxf.onrender.com/api/facturas/30001/kude -UseBasicParsing | Select-Object StatusCode, @{n='tipo';e={$_.Headers['Content-Type']}}
 ```
 
 - [ ] Si el panel web abre pero las llamadas fallan, revisar en DevTools →
@@ -114,9 +114,9 @@ emite automáticamente si hay timbrado.
 
 1. Abrir “Facturas” → la factura del pedido entregado.
 2. Mostrar folio `EEE-PPP-NNNNNNN`, timbrado, RUC y receptor.
-3. Abrir el KuDE y el PDF.
+3. Abrir el documento: la fila “KuDE” y “PDF” muestran el mismo comprobante en PDF.
 4. Verificar en voz alta: `SUBTOTAL + IVA = TOTAL`, sin decimales.
-5. Escanear el QR del PDF → vuelve a abrir el KuDE.
+5. Escanear el QR del PDF → vuelve a abrir el PDF del comprobante.
 6. Abrir la factura **30001** y comparar con el PDF guardado:
    `951.095 + 95.109 = 1.046.204` y `TOTAL IVA 95.109`.
 7. (Opcional) Anular una factura de prueba con motivo y mostrar la auditoría.
@@ -180,7 +180,7 @@ errores en consola.
 - [ ] `gravada + IVA = total` en el resumen y en la liquidación.
 - [ ] Los importes se muestran en guaraníes enteros.
 - [ ] El PDF incluye emisor, receptor, timbrado, folio, CDC y QR.
-- [ ] El QR reabre el KuDE público.
+- [ ] El QR reabre el PDF público del comprobante.
 - [ ] La anulación exige motivo y queda auditada.
 - [ ] La factura 30001 coincide con el PDF real.
 
@@ -314,7 +314,7 @@ dicho y lo mostrado, manejo de preguntas y honestidad sobre las brechas.
 - [ ] La asignación llega al repartidor.
 - [ ] El QR válido confirma y el inválido se rechaza.
 - [ ] La factura se emite con folio y sin decimales.
-- [ ] El QR del PDF abre el KuDE.
+- [ ] El QR del PDF abre el mismo PDF público.
 - [ ] La factura 30001 cuadra.
 - [ ] El modo offline encola y sincroniza.
 - [ ] La planilla abre con fórmulas y gráficos.

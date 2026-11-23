@@ -139,9 +139,11 @@ leyenda "control interno".
 {APP_URL}/api/facturas/{id}/kude
 ```
 
-Al escanearlo se reabre el KuDE en el navegador. En el PDF el QR se genera
-localmente con `qrcode` (data URI), sin depender de un servicio externo, y el
-endpoint `/kude` usa un generador público sólo como respaldo visual.
+Al escanearlo se abre el **PDF del comprobante**: el endpoint `/kude` entrega
+`application/pdf` (mismo modelo y plantilla que la descarga autenticada). En el
+PDF el QR se genera localmente con `qrcode` (data URI), sin depender de un
+servicio externo. Con `?formato=html` se obtiene la misma factura en HTML, que
+además sirve de respaldo si el servidor no puede generar el PDF.
 
 ### Pipeline KuDE / PDF
 
@@ -157,6 +159,7 @@ flowchart LR
 ```
 
 - **KuDE público:** `GET /api/facturas/{id}/kude` (sin token, es el destino del QR).
+  Devuelve el PDF por defecto; `?formato=html` muestra la versión HTML.
 - **HTML/PDF:** requieren sesión (`requireAuth`).
 - **Resiliencia:** `domcontentloaded` + esperas acotadas (imágenes 4 s, fuentes
   2 s) + flags de Chromium; timeout de PDF 60 s. Si falla el motor, el HTML cae
