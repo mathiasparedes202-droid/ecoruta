@@ -119,8 +119,22 @@ function normalizarImportesFactura(array $fac, float $tarifaPedido): array
 
 function kudeFacturaController(int $id): never
 {
-    // El KuDE público usa el mismo modelo y la misma plantilla que el PDF,
-    // para que el QR muestre exactamente el comprobante y no una página aparte.
+    // El QR apunta al documento: por defecto se entrega el PDF real.
+    // Con ?formato=html se ve la misma factura en HTML, y ese HTML también
+    // sirve de respaldo si el servidor no puede generar el PDF.
+    if (($_GET['formato'] ?? '') !== 'html') {
+        $pdf = deliveryFacturaFile($id, 'pdf', true);
+        if ($pdf !== '' && is_file($pdf)) {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="factura-' . $id . '.pdf"');
+            header('Content-Length: ' . filesize($pdf));
+            readfile($pdf);
+            @unlink($pdf);
+            exit;
+        }
+    }
+
+    // Respaldo (o formato explícito): el comprobante completo en HTML.
     $model = buildDeliveryFacturaModel($id);
     header('Content-Type: text/html; charset=UTF-8');
     echo facturaHtmlFallback($model, true);
@@ -448,11 +462,14 @@ function deliveryFacturaWriteFallbackHtml(array $model): string
     return $outputPath;
 }
 
-function deliveryFacturaFile(int $idFactura, string $mode): string
+function deliveryFacturaFile(int $idFactura, string $mode, bool $silencioso = false): string
 {
     $model = buildDeliveryFacturaModel($idFactura);
     $payload = json_encode($model, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($payload === false) {
+        if ($silencioso) {
+            return '';
+        }
         sendJson(['message' => 'No se pudo serializar la factura'], 500);
     }
     $scriptPath = locateFacturaPyScript();
@@ -460,6 +477,9 @@ function deliveryFacturaFile(int $idFactura, string $mode): string
     if ($scriptPath === null) {
         if ($mode === 'html') {
             return deliveryFacturaWriteFallbackHtml($model);
+        }
+        if ($silencioso) {
+            return '';
         }
         sendJson(['message' => 'Motor de facturas no disponible en este servidor (falta factura-py o Node). Usa KuDE/HTML.'], 501);
     }
@@ -492,6 +512,10 @@ function deliveryFacturaFile(int $idFactura, string $mode): string
             "/could not find (chrome|chromium)|browser was not found|executable doesn't exist|failed to launch the browser|no se encontr[oó] (chrome|chromium)/i",
             $err
         ) === 1;
+        if ($silencioso) {
+            if (is_file($outputPath)) @unlink($outputPath);
+            return '';
+        }
         if ($faltaChromium) {
             sendJson(['message' => 'PDF no disponible en este servidor (no se pudo iniciar Chromium). Usa KuDE/HTML.'], 501);
         }
